@@ -1,2 +1,9 @@
 opencv-python
+<<<<<<< HEAD
 pillow
+=======
+Pillow
+numpy
+mediapipe
+psutil
+>>>>>>> 86e11fa (Fuck don't shit man)

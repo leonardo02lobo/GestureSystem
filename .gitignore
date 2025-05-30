@@ -1,0 +1,11 @@
+# Ignorar entorno virtual de Python
+venv/
+venv/lib/python3.12/site-packages/jaxlib/libjax_common.so
+
+# Ignorar archivos de Python compiled
+__pycache__/
+*.py[cod]
+
+# Ignore otros archivos temporales o de sistema comunes
+.DS_Store
+*.log
