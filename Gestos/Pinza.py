@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 import time
+=======
+>>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
 from GestosController import GestosController
 import platform
 import subprocess
@@ -7,11 +10,14 @@ import os
 class PinzaController(GestosController):
     def __init__(self, nombre, encendido):
         super().__init__(nombre, encendido)
+<<<<<<< HEAD
         self.ultimo_gesto_detectado = None
         self.ultimo_tiempo_deteccion = 0
         self.gesture_hold_threshold = 4
         self.min_pinch_distance = 0.08 
         self.tiempo_espera = 0.5
+=======
+>>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
     
     def detectarGestos(self, hand_landmarks):
         try:
@@ -25,6 +31,7 @@ class PinzaController(GestosController):
             distancia = ((punta_pulgar.x - punta_indice.x) ** 2 + 
                          (punta_pulgar.y - punta_indice.y) ** 2) ** 0.5
             
+<<<<<<< HEAD
             gesto_actual = None
             if distancia < 0.1:
                 return "pinza"
@@ -44,6 +51,10 @@ class PinzaController(GestosController):
             if (gesto_actual is not None and 
                 (time.time() - self.ultimo_tiempo_deteccion) >= self.tiempo_espera):
                 return gesto_actual
+=======
+            if distancia < 0.1:
+                return "pinza"
+>>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
                 
             return None
         except Exception as e:

@@ -45,7 +45,10 @@ try:
         
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
+<<<<<<< HEAD
                 
+=======
+>>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
                 mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                 if pinza.detectarGestos(hand_landmarks) == "pinza":
@@ -69,10 +72,17 @@ try:
                     break
 
                 
+<<<<<<< HEAD
                 if cerrar.detectarGestos(hand_landmarks) == "cerrar":
                     chrome_manager.close_all_tabs()
                     time.sleep(1)
                     cleanup()
+=======
+                # if cerrar.detectarGestos(hand_landmarks) == "cerrar":
+                #     chrome_manager.close_all_tabs()
+                #     time.sleep(1)
+                #     cleanup()
+>>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
         
         cv2.putText(frame, "Navegador", (50, 100), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
