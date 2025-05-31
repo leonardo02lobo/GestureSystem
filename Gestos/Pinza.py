@@ -1,5 +1,9 @@
 import time
+<<<<<<< HEAD
 from GestosController import GestosController
+=======
+import GestosController
+>>>>>>> 86d495a00ba7f64ae211bc1d0287feab4c17329b
 import platform
 import subprocess
 import os
