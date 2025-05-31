@@ -1,22 +1,5 @@
 opencv-python
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> 86d495a00ba7f64ae211bc1d0287feab4c17329b
 Pillow
 numpy
 mediapipe
 psutil
-<<<<<<< HEAD
-=======
-=======
-<<<<<<< HEAD
-pillow
-=======
-Pillow
-numpy
-mediapipe
-psutil
->>>>>>> 86e11fa (Fuck don't shit man)
->>>>>>> 682df73c5084299098876d88a46c4cb959dcf706
->>>>>>> 86d495a00ba7f64ae211bc1d0287feab4c17329b

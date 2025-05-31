@@ -1,11 +1,6 @@
 # Ignorar entorno virtual de Python
-<<<<<<< HEAD
 .venv/
 .venv/lib/python3.12/site-packages/jaxlib/libjax_common.so
-=======
-venv/
-venv/lib/python3.12/site-packages/jaxlib/libjax_common.so
->>>>>>> 86d495a00ba7f64ae211bc1d0287feab4c17329b
 
 # Ignorar archivos de Python compiled
 __pycache__/
