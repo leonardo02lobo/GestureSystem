@@ -3,3 +3,5 @@ Pillow
 numpy
 mediapipe
 psutil
+pygetwindow
+pywinauto
