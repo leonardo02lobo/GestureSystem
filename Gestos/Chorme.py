@@ -4,14 +4,14 @@ import platform
 import subprocess
 import os
 
-class ChormeController(GestosController):
+class ChromeController(GestosController):
     def __init__(self, nombre, encendido):
         super().__init__(nombre, encendido)
-        self.ultimo_gesto_detectado = None
-        self.ultimo_tiempo_deteccion = 0
-        self.gesture_hold_threshold = 2  # segundos para mantener el gesto
-        self.tiempo_espera = 0.5  # segundos de espera mínima
-        self.gesture_start_time = 0
+        self.ultimoGestoDetectado = None
+        self.ultimoTiempoDeteccion = 0
+        self.gestoSostenidoUmbral = 4  # segundos para mantener el gesto
+        self.tiempoEspera = 0.5  # segundos de espera mínima
+        self.gestoInicioTiempo = 0
 
     def detectarGestos(self, hand_landmarks):
         try:
@@ -20,52 +20,50 @@ class ChormeController(GestosController):
             if len(landmarks) < 21:
                 return None
                 
-            punta_indice = landmarks[8]
-            base_indice = landmarks[5]
+            puntaIndice = landmarks[8]
+            baseIndice = landmarks[5]
 
-            gesto_actual = None
-            if punta_indice.y < base_indice.y:
-                gesto_actual = "abrirChorme"
+            gestoActual = None
+            if puntaIndice.y < baseIndice.y:
+                gestoActual = "abrirChrome"
             
             # Si el gesto actual es diferente al último detectado, reiniciamos el temporizador
-            if gesto_actual != self.ultimo_gesto_detectado:
-                self.gesture_start_time = time.time()
-                self.ultimo_tiempo_deteccion = time.time()
-                self.ultimo_gesto_detectado = gesto_actual
+            if gestoActual != self.ultimoGestoDetectado:
+                self.gestoInicioTiempo = time.time()
+                self.ultimoTiempoDeteccion = time.time()
+                self.ultimoGestoDetectado = gestoActual
                 return None
             
             # Verificar si el gesto se ha mantenido el tiempo suficiente
-            if (gesto_actual and 
-                (time.time() - self.gesture_start_time) >= self.gesture_hold_threshold):
-                return gesto_actual
+            if (gestoActual and 
+                (time.time() - self.gestoInicioTiempo) >= self.gestoSostenidoUmbral):
+                return gestoActual
             
             # Si ha pasado el tiempo de espera y el gesto se mantiene
-            if (gesto_actual is not None and 
-                (time.time() - self.ultimo_tiempo_deteccion) >= self.tiempo_espera):
-                return gesto_actual
+            if (gestoActual is not None and 
+                (time.time() - self.ultimoTiempoDeteccion) >= self.tiempoEspera):
+                return gestoActual
                 
             return None
         except Exception as e:
             print(f"Error al detectar gestos: {str(e)}")
             return None
 
-    def AbrirChrome(self):
+    def abrirChrome(self):
         sistema = platform.system()
         try:
             if sistema == "Windows":
-                subprocess.Popen(["start", "chrome"], shell=True)
+                subprocess.Popen("start chrome", shell=True)
             elif sistema == "Linux":
-                desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+                escritorio = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
                 
-                # Intentar con el comando genérico primero
                 try:
                     subprocess.Popen(["google-chrome"])
                 except:
-                    # Fallback para diferentes distribuciones
-                    browsers = ["google-chrome", "chromium", "chrome"]
-                    for browser in browsers:
+                    navegadores = ["google-chrome", "chromium", "chrome"]
+                    for navegador in navegadores:
                         try:
-                            subprocess.Popen([browser])
+                            subprocess.Popen([navegador])
                             break
                         except:
                             continue

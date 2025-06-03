@@ -3,42 +3,37 @@ import threading
 import time
 from typing import List
 
-
-class ChromeTabManager:
+class AdministradorDePestanasChrome:
     def __init__(self):
-        self.tabs: List[subprocess.Popen] = []
-        self.monitor_thread = threading.Thread(target=self._monitor_tabs, daemon=True)
-        self.running = True
-        self.monitor_thread.start()
+        self.pestanas: List[subprocess.Popen] = []
+        self.hiloMonitor = threading.Thread(target=self._monitorPestanas, daemon=True)
+        self.ejecutando = True
+        self.hiloMonitor.start()
     
-    def open_tab(self, url: str = None):
-        """Abre una nueva pestaña de Chrome"""
+    def abrirPestana(self, url: str = None):
         cmd = ["google-chrome"]
         if url:
             cmd.append(url)
-        new_tab = subprocess.Popen(cmd)
-        self.tabs.append(new_tab)
-        return new_tab
+        nuevaPestana = subprocess.Popen(cmd)
+        self.pestanas.append(nuevaPestana)
+        return nuevaPestana
     
-    def close_all_tabs(self):
-        """Cierra todas las pestañas gestionadas"""
-        for tab in self.tabs:
+    def cerrarTodasLasPestanas(self):
+        for pestana in self.pestanas:
             try:
-                tab.terminate()
+                pestana.terminate()
             except:
                 pass
-        self.tabs.clear()
+        self.pestanas.clear()
     
-    def _monitor_tabs(self):
-        """Hilo que monitorea el estado de las pestañas"""
-        while self.running:
-            for i, tab in enumerate(self.tabs[:]):
-                if tab.poll() is not None:  # Si la pestaña se cerró
-                    self.tabs.pop(i)
-                    print(f"Pestaña cerrada, quedan {len(self.tabs)} pestañas abiertas")
-            time.sleep(1)  # Revisar cada segundo
+    def _monitorPestanas(self):
+        while self.ejecutando:
+            for i, pestana in enumerate(self.pestanas[:]):
+                if pestana.poll() is not None:  
+                    self.pestanas.pop(i)
+                    print(f"Pestaña cerrada, quedan {len(self.pestanas)} pestañas abiertas")
+            time.sleep(1) 
     
-    def stop(self):
-        """Detiene el monitor"""
-        self.running = False
-        self.monitor_thread.join()
+    def detener(self):
+        self.ejecutando = False
+        self.hiloMonitor.join()

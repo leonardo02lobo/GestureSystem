@@ -2,76 +2,82 @@ import cv2
 import mediapipe as mp
 import time
 import sys
-from Gestos.Chorme import ChormeController
+from Gestos.Chorme import ChromeController
 from Gestos.Cerrar import CerrarController
 from Gestos.Pinza import PinzaController
-from Manager.ChormeManager import ChromeTabManager
+from Gestos.Position import PositionController
+from Manager.ChormeManager import AdministradorDePestanasChrome
 
 # Configuración inicial
-def initialize():
-    mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
-    mp_draw = mp.solutions.drawing_utils
+def inicializar():
+    mpManos = mp.solutions.hands
+    manos = mpManos.Hands(max_num_hands=1, min_detection_confidence=0.7)
+    mpDibujo = mp.solutions.drawing_utils
     cap = cv2.VideoCapture(0)
     
     # Controladores
-    chrome_controller = ChormeController("chrome", False)
-    close_controller = CerrarController("cerrar", False)
-    pinch_controller = PinzaController("pinza", False)
+    controladorChrome = ChromeController("chrome", False)
+    controladorCerrar = CerrarController("cerrar", False)
+    controladorPinza = PinzaController("pinza", False)
     
     # Administrador de Chrome
-    chrome_manager = ChromeTabManager()
+    administradorChrome = AdministradorDePestanasChrome()
     
-    return hands, mp_draw, cap, chrome_controller, close_controller, pinch_controller, chrome_manager,mp_hands
+    return manos, mpDibujo, cap, controladorChrome, controladorCerrar, controladorPinza, administradorChrome, mpManos
 
 # Limpieza de recursos
-def cleanup(cap, chrome_manager):
-    chrome_manager.close_all_tabs()
-    chrome_manager.stop()
+def limpiar(cap, administradorChrome):
+    administradorChrome.cerrarTodasLasPestanas()
+    administradorChrome.stop()
     cap.release()
     cv2.destroyAllWindows()
     sys.exit(0)
 
 # Procesamiento de gestos
-def process_gestures(landmarks, controllers, last_gesture_time, cooldown):
-    current_time = time.time()
-    gesture_detected = None
+def procesarGestos(landmarks, controladores, ultimoTiempoGesto, cooldown):
+    tiempoActual = time.time()
+    gestoDetectado = None
     
     # Verificar cada controlador
-    for controller in controllers:
-        gesture = controller.detectarGestos(landmarks)
-        if gesture:
-            if (current_time - last_gesture_time) > cooldown:
-                gesture_detected = (controller, gesture)
+    for controlador in controladores:
+        gesto = controlador.detectarGestos(landmarks)
+        if gesto:
+            if (tiempoActual - ultimoTiempoGesto) > cooldown:
+                gestoDetectado = (controlador, gesto)
             break
     
-    return gesture_detected, current_time
+    return gestoDetectado, tiempoActual
 
 # Ejecutar acción correspondiente al gesto
-def execute_gesture_action(controller, gesture):
-    if isinstance(controller, ChormeController) and gesture == "abrirChorme":
-        controller.AbrirChrome()
-    elif isinstance(controller, PinzaController) and gesture == "pinza":
-        controller.AbrirAdministradorDeArchivos()
+def ejecutarAccionGesto(controlador, gesto):
+    if isinstance(controlador, ChromeController) and gesto == "abrirChrome":
+        controlador.abrirChrome()
+    elif isinstance(controlador, PinzaController) and gesto == "pinza":
+        controlador.abrirAdministradorDeArchivos()
 
 # Mostrar información en pantalla
-def display_info(frame, gesture_name, cooldown_active):
-    text_color = (0, 255, 0) if not cooldown_active else (0, 0, 255)
+def mostrarInformacion(frame, nombreGesto, cooldownActivo):
+    colorTexto = (0, 255, 0) if not cooldownActivo else (0, 0, 255)
     cv2.putText(frame, "Control de Gestos - Navegador", (50, 100), 
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     
-    if gesture_name:
-        cv2.putText(frame, f"Gesto: {gesture_name}", (50, 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, text_color, 2)
+    if nombreGesto:
+        cv2.putText(frame, f"Gesto: {nombreGesto}", (50, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, colorTexto, 2)
 
 # Main
 def main():
     # Inicialización
-    hands, mp_draw, cap, chrome_controller, close_controller, pinch_controller, chrome_manager,mp_hands= initialize()
-    controllers = [pinch_controller, chrome_controller, close_controller]
-    GESTURE_COOLDOWN = 5
-    last_gesture_time = 0
-    
+    manos, mpDibujo, cap, controladorChrome, controladorCerrar, controladorPinza, administradorChrome, mpManos = inicializar()
+    controladores = [controladorPinza, controladorChrome, controladorCerrar]
+    COOLDOWN_GESTO = 5
+    ultimoTiempoGesto = 0
+
+    # Crear un controlador de posición (ejemplo con coordenadas arbitrarias)
+    posicionInicio = (0, 0)  # Coordenada A
+    posicionFin = (100, 100)  # Coordenada B
+    controladorPosicion = PositionController(posicionInicio, posicionFin)
+
     try:
         while True:
             ret, frame = cap.read()
@@ -79,37 +85,41 @@ def main():
                 break
 
             # Procesamiento de imagen
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = hands.process(rgb_frame)
-            current_gesture = None
-            cooldown_active = (time.time() - last_gesture_time) <= GESTURE_COOLDOWN
+            rgbFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            resultados = manos.process(rgbFrame)
+            gestoActual = None
+            cooldownActivo = (time.time() - ultimoTiempoGesto) <= COOLDOWN_GESTO
 
-            if results.multi_hand_landmarks:
-                for landmarks in results.multi_hand_landmarks:
-                    mp_draw.draw_landmarks(frame, landmarks, mp_hands.HAND_CONNECTIONS)
-                    
+            if resultados.multi_hand_landmarks:
+                for landmarks in resultados.multi_hand_landmarks:
+                    mpDibujo.draw_landmarks(frame, landmarks, mpManos.HAND_CONNECTIONS)
+
                     # Detección de gestos
-                    gesture_info, detection_time = process_gestures(
-                        landmarks, controllers, last_gesture_time, GESTURE_COOLDOWN)
-                    
-                    if gesture_info:
-                        controller, gesture = gesture_info
-                        execute_gesture_action(controller, gesture)
-                        current_gesture = gesture
-                        last_gesture_time = detection_time
-                        cooldown_active = False
+                    infoGesto, tiempoDeteccion = procesarGestos(
+                        landmarks, controladores, ultimoTiempoGesto, COOLDOWN_GESTO)
+
+                    if infoGesto:
+                        controlador, gesto = infoGesto
+                        ejecutarAccionGesto(controlador, gesto)
+                        gestoActual = gesto
+                        ultimoTiempoGesto = tiempoDeteccion
+                        cooldownActivo = False
+
+                        # Control de posición y ejecución de acción
+                        controladorPosicion.move_to_position()
+                        controladorPosicion.execute_action()
 
             # Mostrar información
-            display_info(frame, current_gesture, cooldown_active)
+            mostrarInformacion(frame, gestoActual, cooldownActivo)
             cv2.imshow("Control por Gestos", frame)
-            
+
             # Salir con 'q' o al cerrar la ventana
             if cv2.waitKey(1) & 0xFF == ord('q') or \
                cv2.getWindowProperty("Control por Gestos", cv2.WND_PROP_VISIBLE) < 1:
                 break
 
     finally:
-        cleanup(cap, chrome_manager)
+        limpiar(cap, administradorChrome)
 
 if __name__ == "__main__":
     main()
