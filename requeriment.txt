@@ -3,3 +3,6 @@ Pillow
 numpy
 mediapipe
 psutil
+xdotool 
+wmctrl
+pynput
