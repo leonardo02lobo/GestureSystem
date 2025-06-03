@@ -49,31 +49,31 @@ class ChormeController(GestosController):
             print(f"Error al detectar gestos: {str(e)}")
             return None
 
-    # def AbrirChrome(self):
-    #     sistema = platform.system()
-    #     try:
-    #         if sistema == "Windows":
-    #             subprocess.Popen(["start", "chrome"], shell=True)
-    #         elif sistema == "Linux":
-    #             desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    def AbrirChrome(self):
+        sistema = platform.system()
+        try:
+            if sistema == "Windows":
+                subprocess.Popen(["start", "chrome"], shell=True)
+            elif sistema == "Linux":
+                desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
                 
-    #             # Intentar con el comando genérico primero
-    #             try:
-    #                 subprocess.Popen(["google-chrome"])
-    #             except:
-    #                 # Fallback para diferentes distribuciones
-    #                 browsers = ["google-chrome", "chromium", "chrome"]
-    #                 for browser in browsers:
-    #                     try:
-    #                         subprocess.Popen([browser])
-    #                         break
-    #                     except:
-    #                         continue
-    #         else:
-    #             print(f"Sistema operativo no soportado: {sistema}")
-    #             return False
+                # Intentar con el comando genérico primero
+                try:
+                    subprocess.Popen(["google-chrome"])
+                except:
+                    # Fallback para diferentes distribuciones
+                    browsers = ["google-chrome", "chromium", "chrome"]
+                    for browser in browsers:
+                        try:
+                            subprocess.Popen([browser])
+                            break
+                        except:
+                            continue
+            else:
+                print(f"Sistema operativo no soportado: {sistema}")
+                return False
         
-    #         return True
-    #     except Exception as e:
-    #         print(f"Error al abrir Chrome: {e}")
-    #         return False
+            return True
+        except Exception as e:
+            print(f"Error al abrir Chrome: {e}")
+            return False
