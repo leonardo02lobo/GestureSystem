@@ -13,7 +13,7 @@ class ChromeTabManager:
     
     def open_tab(self, url: str = None):
         """Abre una nueva pestaña de Chrome"""
-        cmd = ["google-chrome","https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT8e0VddPETHT9eRcbPDB_IT2RGbiPx6fy1fw&s"]
+        cmd = ["google-chrome"]
         if url:
             cmd.append(url)
         new_tab = subprocess.Popen(cmd)

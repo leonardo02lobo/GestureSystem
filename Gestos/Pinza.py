@@ -1,5 +1,5 @@
 import time
-import GestosController
+from GestosController import GestosController
 import platform
 import subprocess
 import os
