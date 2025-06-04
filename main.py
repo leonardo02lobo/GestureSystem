@@ -3,9 +3,7 @@ import mediapipe as mp
 import time
 import sys
 from Gestos.Chorme import ChromeController
-from Gestos.Cerrar import CerrarController
 from Gestos.Pinza import PinzaController
-from Gestos.Position import PositionController
 from Manager.ChormeManager import AdministradorDePestanasChrome
 
 def inicializar():
@@ -15,12 +13,11 @@ def inicializar():
     cap = cv2.VideoCapture(0)
     
     controladorChrome = ChromeController("chrome", False)
-    controladorCerrar = CerrarController("cerrar", False)
     controladorPinza = PinzaController("pinza", False)
     
     administradorChrome = AdministradorDePestanasChrome()
     
-    return manos, mpDibujo, cap, controladorChrome, controladorCerrar, controladorPinza, administradorChrome, mpManos
+    return manos, mpDibujo, cap, controladorChrome, controladorPinza, administradorChrome, mpManos
 
 def limpiar(cap, administradorChrome):
     administradorChrome.cerrarTodasLasPestanas()
@@ -58,14 +55,10 @@ def mostrarInformacion(frame, nombreGesto, cooldownActivo):
                     cv2.FONT_HERSHEY_SIMPLEX, 1, colorTexto, 2)
 
 def main():
-    manos, mpDibujo, cap, controladorChrome, controladorCerrar, controladorPinza, administradorChrome, mpManos = inicializar()
-    controladores = [controladorPinza, controladorChrome, controladorCerrar]
+    manos, mpDibujo, cap, controladorChrome, controladorPinza, administradorChrome, mpManos = inicializar()
+    controladores = [controladorPinza, controladorChrome]
     COOLDOWN_GESTO = 5
     ultimoTiempoGesto = 0
-
-    posicionInicio = (0, 100) 
-    posicionFin = (100, 100) 
-    controladorPosicion = PositionController("volumen",False,posicionInicio, posicionFin)
 
     try:
         while True:
@@ -81,7 +74,6 @@ def main():
                 for landmarks in resultados.multi_hand_landmarks:
                     mpDibujo.draw_landmarks(frame, landmarks, mpManos.HAND_CONNECTIONS)
 
-                    controladorPosicion.detectarGestos(landmarks)
                     infoGesto, tiempoDeteccion = procesarGestos(
                         landmarks, controladores, ultimoTiempoGesto, COOLDOWN_GESTO)
 
@@ -91,9 +83,6 @@ def main():
                         gestoActual = gesto
                         ultimoTiempoGesto = tiempoDeteccion
                         cooldownActivo = False
-
-                        controladorPosicion.move_to_position()
-                        controladorPosicion.execute_action()
 
             mostrarInformacion(frame, gestoActual, cooldownActivo)
             cv2.imshow("Control por Gestos", frame)

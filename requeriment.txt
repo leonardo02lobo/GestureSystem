@@ -6,3 +6,4 @@ psutil
 xdotool 
 wmctrl
 pynput
+pyautogui
