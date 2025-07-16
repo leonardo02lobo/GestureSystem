@@ -7,3 +7,4 @@ xdotool
 wmctrl
 pynput
 pyautogui
+pyserial
