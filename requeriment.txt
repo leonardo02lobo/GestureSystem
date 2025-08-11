@@ -8,3 +8,4 @@ wmctrl
 pynput
 pyautogui
 pyserial
+pyzbar
