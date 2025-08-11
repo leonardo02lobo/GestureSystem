@@ -1,4 +1,7 @@
 # Ignorar entorno virtual de Python
+venv/
+venv/lib/python3.12/site-packages/jaxlib/libjax_common.so
+
 .venv/
 .venv/lib/python3.12/site-packages/jaxlib/libjax_common.so
 
