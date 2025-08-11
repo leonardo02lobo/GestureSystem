@@ -1,17 +1,3 @@
-# =========================
-# gesture_mode.py
-# =========================
-"""Control de LEDs mediante gestos de **mano** (sin usar la cara).
-
-Gestos reconocidos y su acción:
-- Mano en el tercio IZQUIERDO de la pantalla  → LED 8 ON
-- Mano en el tercio DERECHO de la pantalla   → LED 3 ON
-- Mano en el tercio SUPERIOR de la pantalla  → Apagar LEDs (equivalente a "arriba")
-- Gesto "OK" (pulgar–índice juntos)          → LED 4 ON
-
-Mantiene la lógica de tiempo de espera para apagar LED 4 si la mano desaparece.
-"""
-
 from __future__ import annotations
 
 import cv2
@@ -25,14 +11,10 @@ mp_drawing = mp.solutions.drawing_utils
 
 hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
 
-GESTURE_DELAY = 1.0  # s entre gestos de posición de mano
-HAND_TIMEOUT = 2.0   # s para apagar LED 4 cuando desaparece la mano
+GESTURE_DELAY = 1.0 
+HAND_TIMEOUT = 2.0 
 
 current_led_state = {"8": False, "3": False, "4": False}
-
-# ----------------------------------------------------------------------------
-# Funciones utilitarias
-# ----------------------------------------------------------------------------
 
 def control_led(arduino: serial.Serial, estado: str, pin: str = "") -> None:
     """Enciende (*estado == 'on'*) o apaga (*estado == 'off'*) LEDs por pin."""
@@ -49,7 +31,7 @@ def control_led(arduino: serial.Serial, estado: str, pin: str = "") -> None:
 
 def detectar_posicion_mano(lm, w: int, h: int) -> str | None:
     """Devuelve 'izquierda', 'derecha' o 'arriba' según la posición de la muñeca."""
-    wrist = lm.landmark[0]  # Muñeca
+    wrist = lm.landmark[0] 
     x_px, y_px = wrist.x * w, wrist.y * h
     if y_px < h * 0.25:
         return "arriba"
@@ -65,10 +47,6 @@ def detectar_gesto_ok(lm) -> bool:
     index_tip = lm.landmark[8]
     dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
     return dist < 0.05
-
-# ----------------------------------------------------------------------------
-# Bucle principal
-# ----------------------------------------------------------------------------
 
 def run(arduino: serial.Serial, camera_index: int = 0) -> None:
     cap = cv2.VideoCapture(camera_index)
@@ -97,12 +75,10 @@ def run(arduino: serial.Serial, camera_index: int = 0) -> None:
             for lm in resultados.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, lm, mp_hands.HAND_CONNECTIONS)
 
-                # ---- Gesto OK (LED 4) ----
                 if detectar_gesto_ok(lm):
                     control_led(arduino, "on", "4")
                     print("👍 Gesto OK detectado")
 
-                # ---- Posición de la mano (LED 8 / LED 3 / OFF) ----
                 if t - last_position_time > GESTURE_DELAY:
                     pos = detectar_posicion_mano(lm, w, h)
                     if pos == "izquierda":
@@ -115,7 +91,6 @@ def run(arduino: serial.Serial, camera_index: int = 0) -> None:
                         control_led(arduino, "off")
                         last_position_time = t
 
-        # ---- Apagado automático LED 4 ----
         if not hand_present and current_led_state["4"]:
             if t - last_hand_seen_time > HAND_TIMEOUT:
                 control_led(arduino, "off")
@@ -123,7 +98,7 @@ def run(arduino: serial.Serial, camera_index: int = 0) -> None:
         cv2.imshow("Control por Gestos", frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("k"):
-            break  # Cambiar de modo
+            break  
         if key in (27, ord("q")):
             sys.exit(0)
 

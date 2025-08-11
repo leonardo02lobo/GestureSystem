@@ -1,8 +1,3 @@
-# =========================
-# qr_mode.py
-# =========================
-"""Módulo para escaneo y apertura de URLs desde códigos QR."""
-
 from __future__ import annotations
 
 import cv2
@@ -27,8 +22,7 @@ def ventana_tiene_focus(expected_name: str) -> bool:
         return True
 
 
-def run(arduino: object | None = None, camera_index: int = 0) -> None:  # noqa: D401
-    """Loop de lectura de QR. *arduino* es ignorado (firma común con gesto)."""
+def run(arduino: object | None = None, camera_index: int = 0) -> None:  
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print("❌ No se pudo abrir la cámara para el modo QR")
@@ -50,7 +44,6 @@ def run(arduino: object | None = None, camera_index: int = 0) -> None:  # noqa: 
         if cv2.getWindowProperty(WINDOW_QR, cv2.WND_PROP_VISIBLE) < 1:
             break
 
-        # Focus de la ventana
         if not ventana_tiene_focus(WINDOW_QR):
             if not bloqueado:
                 print("🔒 Ventana sin focus — escaneo pausado")
@@ -66,7 +59,6 @@ def run(arduino: object | None = None, camera_index: int = 0) -> None:  # noqa: 
                 print("✅ Ventana con focus — escaneo reanudado")
                 bloqueado = False
 
-        # Procesar códigos QR
         if not bloqueado:
             for qr in decode(frame):
                 url = qr.data.decode()
