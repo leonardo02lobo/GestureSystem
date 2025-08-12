@@ -11,38 +11,38 @@ from typing import Deque, List, Tuple, Optional
 
 import mediapipe as mp
 
-WINDOW_TITLE = "MiniJuego: Slice the Squares (k: volver, r: reiniciar, q/ESC: salir)"
+WINDOW_TITLE = "MiniJuego: Slice the Squares (r: reiniciar, q/ESC: salir)"
 
 # Tamaño deseado de la ventana de juego (se reescala el frame de cámara a esto)
 WIN_W, WIN_H = 960, 540
-FULLSCREEN = True          # ← pantalla completa ON/OFF
+FULLSCREEN = False  # Ventana tamaño fijo
 
 # Comportamiento de cámara
-MIRROR = True             # espejo horizontal para control más natural
+MIRROR = True  # espejo horizontal para control más natural
 
 # Spawning (mantengo frecuencia; solo hacemos más lentos los cuadros)
-SPAWN_EVERY = 0.8                 # segundos entre spawns
-SPEED_MIN, SPEED_MAX = 80, 140    # ⬅️ velocidades más LENTAS (antes 180–320 px/s)
-SIZE_MIN, SIZE_MAX = 50, 100      # tamaño del cuadro
+SPAWN_EVERY = 0.8
+SPEED_MIN, SPEED_MAX = 80, 140
+SIZE_MIN, SIZE_MAX = 50, 100
 
-# Puntuación (sin game over)
+# Puntuación
 CUT_SCORE = 10
 
 # Detección de corte (más reactivo)
-TRAIL_MAXLEN = 18         # menos puntos en la estela → más “viva”
-MIN_MOVE_PIX = 6          # ⬇️ desplazamiento mínimo entre frames
-SPEED_GATE = 90           # ⬇️ velocidad mínima del segmento (px/s)
-CUT_COOLDOWN = 0.06       # ⬇️ cooldown por cuadro (más cortes posibles)
+TRAIL_MAXLEN = 18
+MIN_MOVE_PIX = 6
+SPEED_GATE = 90
+CUT_COOLDOWN = 0.06
 
 # Visual
-SQUARE_COLOR = (60, 170, 255)     # BGR
+SQUARE_COLOR = (60, 170, 255)
 SQUARE_CUT_COLOR = (60, 255, 160)
-SQUARE_ALPHA = 0.35              
+SQUARE_ALPHA = 0.35
 TRAIL_COLOR = (40, 220, 255)
 HUD_COLOR = (255, 255, 255)
 
 # —— NUEVO: tiempo de partida ——
-GAME_DURATION = 60.0          # segundos
+GAME_DURATION = 30.0          # segundos
 POST_GAME_WAIT = 3.0          # segundos para mostrar mensaje final
 
 mp_hands = mp.solutions.hands
@@ -56,7 +56,7 @@ def detectar_gesto_ok(lm) -> bool:
     dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
     return dist < 0.05
 
-# (Funciones auxiliares para intersecciones y dibujado, las dejo igual que en tu código original)
+# (Funciones auxiliares para intersecciones y dibujado)
 
 def _ccw(a: Point, b: Point, c: Point) -> int:
     return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
@@ -137,7 +137,7 @@ class Game:
             self.spawn_square(now)
         for sq in self.squares:
             sq.update(dt)
-        self.squares = [s for s in self.squares if s.y <= WIN_H + 2 and s.alive or s.alive]
+        self.squares = [s for s in self.squares if (s.y <= WIN_H + 2 and s.alive) or s.alive]
 
     def register_trail_point(self, x: int, y: int, t: float):
         self.trail.append((x, y, t))
@@ -177,30 +177,34 @@ def run(camera_index: int = 0) -> None:
         print("❌ No se pudo abrir la cámara para el mini-juego")
         return
 
-    # ---- Pantalla completa (en lugar de WINDOW_NORMAL/resizeWindow) ----
-    if FULLSCREEN:
-        cv2.namedWindow(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    else:
-        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
+    # Fijar resolución de captura
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, WIN_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WIN_H)
+
+    # Ventana tamaño fijo
+    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
 
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=1,
         model_complexity=1,
         min_detection_confidence=0.7,
-        min_tracking_confidence=0.8,  # ⬆️ mejor seguimiento → respuesta más estable/rápida
+        min_tracking_confidence=0.8,
     )
 
     game = Game()
     prev_tip: Optional[Tuple[int,int,float]] = None
 
+    # Gesto OK para volver
     DELAY_OK = 3.0
     ok_gesture_start: float | None = None
 
+    # —— NUEVO: temporizador de partida ——
+    game_start_time = time.time()
+
     print("[ MiniJuego ] Corta los cuadros moviendo tu mano sobre ellos")
-    print("Controles: k (volver), r (reiniciar), q/ESC: salir")
+    print("Controles: gesto OK (mantener 3s) para volver")
 
     last_time = time.time()
     try:
@@ -212,7 +216,6 @@ def run(camera_index: int = 0) -> None:
             if MIRROR:
                 frame = cv2.flip(frame, 1)
 
-            # Reescalamos a tamaño lógico del juego (la ventana ya es fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
             now = time.time()
@@ -228,6 +231,8 @@ def run(camera_index: int = 0) -> None:
             res = hands.process(rgb)
             tip_xy: Optional[Tuple[int,int]] = None
 
+            gesto_ok_detectado = False
+
             if res.multi_hand_landmarks:
                 lms = res.multi_hand_landmarks[0]
                 mp_drawing.draw_landmarks(frame, lms, mp_hands.HAND_CONNECTIONS)
@@ -239,24 +244,26 @@ def run(camera_index: int = 0) -> None:
                 if detectar_gesto_ok(lms):
                     gesto_ok_detectado = True
 
-            game.update(dt, now)
+            # Update juego solo si queda tiempo
+            if time_left > 0:
+                game.update(dt, now)
 
-            if tip_xy:
-                game.register_trail_point(tip_xy[0], tip_xy[1], now)
-                if prev_tip:
-                    p1 = (prev_tip[0], prev_tip[1])
-                    p2 = (tip_xy[0], tip_xy[1])
-                    seg_dt = max(1e-3, now - prev_tip[2])
-                    dx = p2[0] - p1[0]
-                    dy = p2[1] - p1[1]
-                    seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
-                    if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
-                        game.try_slice_with_segment(p1, p2, seg_speed, now)
-                prev_tip = (tip_xy[0], tip_xy[1], now)
-            else:
-                prev_tip = None
+                if tip_xy:
+                    game.register_trail_point(tip_xy[0], tip_xy[1], now)
+                    if prev_tip:
+                        p1 = (prev_tip[0], prev_tip[1])
+                        p2 = (tip_xy[0], tip_xy[1])
+                        seg_dt = max(1e-3, now - prev_tip[2])
+                        dx = p2[0] - p1[0]
+                        dy = p2[1] - p1[1]
+                        seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
+                        if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
+                            game.try_slice_with_segment(p1, p2, seg_speed, now)
+                    prev_tip = (tip_xy[0], tip_xy[1], now)
+                else:
+                    prev_tip = None
 
-            # Mostrar cuenta regresiva si gesto OK mantenido
+            # Gesto OK para volver (cuenta regresiva en pantalla)
             if gesto_ok_detectado:
                 if ok_gesture_start is None:
                     ok_gesture_start = now
@@ -271,6 +278,7 @@ def run(camera_index: int = 0) -> None:
             else:
                 ok_gesture_start = None
 
+            # Render de cuadros
             for sq in game.squares:
                 x, y, w, h = sq.rect()
                 color = SQUARE_COLOR if sq.alive else SQUARE_CUT_COLOR
@@ -287,14 +295,31 @@ def run(camera_index: int = 0) -> None:
             # HUD: puntaje + tiempo restante MM:SS
             cv2.putText(frame, f"Puntaje: {game.score}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, HUD_COLOR, 2)
-            cv2.putText(frame, "r: reiniciar | q/ESC: salir | Gesto OK (mantener 3s) para volver", (10, 58),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, HUD_COLOR, 1)
+            cv2.putText(frame, f"Tiempo: {_format_mmss(time_left)}", (WIN_W - 220, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, HUD_COLOR, 2)
+            cv2.putText(frame, "Gesto OK (mantener 3s) para volver",
+                        (10, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.5, HUD_COLOR, 1)
+
+            # Si el tiempo terminó, mostrar mensaje final 3s y volver al menú
+            if time_left <= 0:
+                # Overlay oscurecido
+                overlay = frame.copy()
+                overlay[:] = (0, 0, 0)
+                cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+                _draw_centered_big_text(frame, "Tiempo terminado!", scale=1.6, thickness=4)
+                cv2.putText(frame, f"Tu puntaje: {game.score}",
+                            (WIN_W//2 - 150, WIN_H//2 + 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,255), 2)
+                cv2.putText(frame, "Volviendo al menu...",
+                            (WIN_W//2 - 150, WIN_H//2 + 90),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (220,220,220), 2)
+                cv2.imshow(WINDOW_TITLE, frame)
+                cv2.waitKey(int(POST_GAME_WAIT * 1000))
+                break
 
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('k'):
-                break
             if key in (27, ord('q')):
                 cap.release()
                 cv2.destroyAllWindows()
