@@ -11,41 +11,32 @@ from typing import Deque, List, Tuple, Optional
 
 import mediapipe as mp
 
-# ===================== Configuración del juego =====================
 WINDOW_TITLE = "MiniJuego: Slice the Squares (k: volver, r: reiniciar, q/ESC: salir)"
 
-# Tamaño deseado de la ventana de juego (se reescala el frame de cámara a esto)
 WIN_W, WIN_H = 960, 540
 
-# Comportamiento de cámara
-MIRROR = True             # espejo horizontal para control más natural
+MIRROR = True           
 
-# Spawning (mantengo frecuencia; solo hacemos más lentos los cuadros)
-SPAWN_EVERY = 0.8                 # segundos entre spawns
-SPEED_MIN, SPEED_MAX = 80, 140    # ⬅️ velocidades más LENTAS (antes 180–320 px/s)
-SIZE_MIN, SIZE_MAX = 50, 100      # tamaño del cuadro
+SPAWN_EVERY = 0.8                
+SPEED_MIN, SPEED_MAX = 80, 140   
+SIZE_MIN, SIZE_MAX = 50, 100    
 
-# Puntuación (sin game over)
 CUT_SCORE = 10
 
-# Detección de corte (más reactivo)
-TRAIL_MAXLEN = 18         # menos puntos en la estela → más “viva”
-MIN_MOVE_PIX = 6          # ⬇️ desplazamiento mínimo entre frames
-SPEED_GATE = 90           # ⬇️ velocidad mínima del segmento (px/s)
-CUT_COOLDOWN = 0.06       # ⬇️ cooldown por cuadro (más cortes posibles)
+TRAIL_MAXLEN = 18   
+MIN_MOVE_PIX = 6   
+SPEED_GATE = 90      
+CUT_COOLDOWN = 0.06       
 
-# Visual
-SQUARE_COLOR = (60, 170, 255)     # BGR
+SQUARE_COLOR = (60, 170, 255)     
 SQUARE_CUT_COLOR = (60, 255, 160)
-SQUARE_ALPHA = 0.35               # opacidad del relleno (0..1)
+SQUARE_ALPHA = 0.35              
 TRAIL_COLOR = (40, 220, 255)
 HUD_COLOR = (255, 255, 255)
 
-# MediaPipe
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-# ===================== Utilidades de geometría =====================
 Point = Tuple[int, int]
 
 def _ccw(a: Point, b: Point, c: Point) -> int:
@@ -78,7 +69,6 @@ def segment_intersects_rect(p1: Point, p2: Point, rect: Tuple[int,int,int,int]) 
             return True
     return False
 
-# ===================== Dibujo con alpha =====================
 def draw_filled_rect_alpha(frame: np.ndarray, rect: Tuple[int,int,int,int],
                            color_bgr: Tuple[int,int,int], alpha: float):
     x, y, w, h = rect
@@ -90,7 +80,6 @@ def draw_filled_rect_alpha(frame: np.ndarray, rect: Tuple[int,int,int,int],
     cv2.rectangle(overlay, (x0, y0), (x1, y1), color_bgr, thickness=-1)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, dst=frame)
 
-# ===================== Entidades =====================
 @dataclass
 class Square:
     x: float
@@ -106,7 +95,6 @@ class Square:
     def update(self, dt: float):
         self.y += self.vy * dt
 
-# ===================== Estado de juego =====================
 class Game:
     def __init__(self):
         self.reset()
@@ -130,7 +118,6 @@ class Game:
             self.spawn_square(now)
         for sq in self.squares:
             sq.update(dt)
-        # Limpieza: elimina los que ya salieron de pantalla (sin penalizaciones)
         self.squares = [s for s in self.squares if s.y <= WIN_H + 2 and s.alive or s.alive]
 
     def register_trail_point(self, x: int, y: int, t: float):
@@ -149,7 +136,6 @@ class Game:
                 sq.last_cut_time = now
                 self.score += CUT_SCORE
 
-# ===================== Juego principal (run) =====================
 def run(camera_index: int = 0) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -159,13 +145,12 @@ def run(camera_index: int = 0) -> None:
     cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
 
-    # MediaPipe Hands (más estrictos para tracking → menos ruido)
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=1,
         model_complexity=1,
         min_detection_confidence=0.7,
-        min_tracking_confidence=0.8,  # ⬆️ mejor seguimiento → respuesta más estable/rápida
+        min_tracking_confidence=0.8, 
     )
 
     game = Game()
@@ -190,7 +175,6 @@ def run(camera_index: int = 0) -> None:
             dt = max(1e-3, now - last_time)
             last_time = now
 
-            # ======= Mano (punta del índice) =======
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
             tip_xy: Optional[Tuple[int,int]] = None
@@ -203,10 +187,8 @@ def run(camera_index: int = 0) -> None:
                 y_px = int(tip.y * WIN_H)
                 tip_xy = (x_px, y_px)
 
-            # ======= Update juego =======
             game.update(dt, now)
 
-            # ======= Trail y cortes (más responsivo) =======
             if tip_xy:
                 game.register_trail_point(tip_xy[0], tip_xy[1], now)
                 if prev_tip:
@@ -222,22 +204,18 @@ def run(camera_index: int = 0) -> None:
             else:
                 prev_tip = None
 
-            # ======= Render (sobre el video) =======
-            # Cuadros con relleno semitransparente + contorno
             for sq in game.squares:
                 x, y, w, h = sq.rect()
                 color = SQUARE_COLOR if sq.alive else SQUARE_CUT_COLOR
                 draw_filled_rect_alpha(frame, (x, y, w, h), color, SQUARE_ALPHA if sq.alive else 0.15)
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
-            # Estela del índice
             pts = [(x, y) for (x, y, t) in game.trail]
             for i in range(1, len(pts)):
                 cv2.line(frame, pts[i-1], pts[i], TRAIL_COLOR, 2)
             if tip_xy:
                 cv2.circle(frame, tip_xy, 6, (0, 255, 255), -1)
 
-            # HUD (sin game over / sin vidas)
             cv2.putText(frame, f"Puntaje: {game.score}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, HUD_COLOR, 2)
             cv2.putText(frame, "k: volver | r: reiniciar | q/ESC: salir", (10, 58),
@@ -245,7 +223,6 @@ def run(camera_index: int = 0) -> None:
 
             cv2.imshow(WINDOW_TITLE, frame)
 
-            # ======= Input =======
             key = cv2.waitKey(1) & 0xFF
             if key == ord('k'):
                 break

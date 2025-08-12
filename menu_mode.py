@@ -11,18 +11,15 @@ WINDOW_TITLE = "Menu por Gestos (4 cuadrantes)"
 WIN_W, WIN_H = 960, 540
 MIRROR = True
 
-# Umbral de confirmación (segundos manteniendo la mano en el cuadrante)
 DWELL_SECONDS = 1.2
 
-# Confianza mínima de MediaPipe
 MIN_CONFIDENCE_DET = 0.7
 MIN_CONFIDENCE_TRACK = 0.6
 
-# Colores (BGR)
-COLOR_TL = (70, 170, 255)   # QR (arriba-izq)
-COLOR_TR = (60, 255, 160)   # Juego (arriba-der)
-COLOR_BL = (180, 180, 180)  # Vacío (abajo-izq)
-COLOR_BR = (255, 180, 60)   # Gestos (abajo-der)
+COLOR_TL = (70, 170, 255)   
+COLOR_TR = (60, 255, 160)   
+COLOR_BL = (180, 180, 180)  
+COLOR_BR = (255, 180, 60)   
 COLOR_TXT = (255, 255, 255)
 BAR_H = 12
 
@@ -51,16 +48,15 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
     h, w = frame.shape[:2]
     half_w, half_h = w // 2, h // 2
 
-    # capas semitransparentes por cuadrante
     overlay = frame.copy()
     def fill(rect, color):
         x0, y0, x1, y1 = rect
         cv2.rectangle(overlay, (x0, y0), (x1, y1), color, -1)
 
-    fill((0, 0,        half_w, half_h), COLOR_TL)  # TL
-    fill((half_w, 0,   w,      half_h), COLOR_TR)  # TR
-    fill((0, half_h,   half_w, h),      COLOR_BL)  # BL
-    fill((half_w,half_h, w,    h),      COLOR_BR)  # BR
+    fill((0, 0,        half_w, half_h), COLOR_TL)  
+    fill((half_w, 0,   w,      half_h), COLOR_TR)  
+    fill((0, half_h,   half_w, h),      COLOR_BL)  
+    fill((half_w,half_h, w,    h),      COLOR_BR)  
 
     cv2.addWeighted(overlay, 0.13, frame, 0.87, 0, frame)
 
@@ -74,7 +70,6 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
     cv2.putText(frame, "(Libre)",   (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)                        # BL
     cv2.putText(frame, "GESTOS",    (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                   # BR
 
-    # barra de progreso según cuadrante activo
     if q is not None:
         total = int(w * 0.38)
         filled = int(total * max(0.0, min(1.0, progress)))
@@ -95,7 +90,6 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
         cv2.rectangle(frame, (x0, y0), (x0 + filled, y0 + BAR_H), color, -1)
         cv2.rectangle(frame, (x0, y0), (x0 + total, y0 + BAR_H), (255,255,255), 1)
 
-    # instrucciones
     cv2.putText(frame, "Mantene la mano ~1.2s en un cuadrante para seleccionar",
                 (20, h//2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230,230,230), 2)
     cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | ESC para salir",
@@ -140,7 +134,6 @@ def run(camera_index: int = 0) -> Optional[str]:
                 frame = cv2.flip(frame, 1)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
-            # Detección de mano
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
@@ -151,7 +144,6 @@ def run(camera_index: int = 0) -> Optional[str]:
                 lms = res.multi_hand_landmarks[0]
                 mp_drawing.draw_landmarks(frame, lms, mp_hands.HAND_CONNECTIONS)
 
-                # Usamos la MUÑECA (landmark 0)
                 wrist = lms.landmark[0]
                 x_norm, y_norm = wrist.x, wrist.y
                 q_active = _quadrant_of(x_norm, y_norm)
@@ -164,7 +156,6 @@ def run(camera_index: int = 0) -> Optional[str]:
                 progress = min(1.0, elapsed / DWELL_SECONDS)
 
                 if elapsed >= DWELL_SECONDS:
-                    # Confirmado → mapear a salida
                     sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos"}
                     selection = sel_map.get(q_active)
                     if selection is not None:
@@ -172,7 +163,6 @@ def run(camera_index: int = 0) -> Optional[str]:
                         cv2.destroyWindow(WINDOW_TITLE)
                         return selection
                     else:
-                        # BL por ahora no hace nada: reinicia dwell
                         dwell_q = None
                         dwell_start = 0.0
             else:
@@ -183,7 +173,7 @@ def run(camera_index: int = 0) -> Optional[str]:
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord('q')):   # salir
+            if key in (27, ord('q')):   
                 cap.release()
                 cv2.destroyWindow(WINDOW_TITLE)
                 return None

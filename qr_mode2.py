@@ -22,7 +22,6 @@ def ventana_tiene_focus(expected_name: str) -> bool:
         ).decode().strip()
         return expected_name in name
     except Exception:
-        # En Wayland / sin xdotool, no pausamos por foco.
         return True
 
 
