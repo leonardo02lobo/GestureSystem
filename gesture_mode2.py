@@ -14,15 +14,16 @@ import mediapipe as mp
 # ===================== Configuración del juego =====================
 WINDOW_TITLE = "MiniJuego: Slice the Squares (k: volver, r: reiniciar, q/ESC: salir)"
 
-# Tamaño deseado de la ventana de juego (se reescala el frame de cámara a esto)
+# Tamaño lógico para procesamiento/overlay (la ventana real será fullscreen)
 WIN_W, WIN_H = 960, 540
+FULLSCREEN = True          # ← pantalla completa ON/OFF
 
 # Comportamiento de cámara
-MIRROR = True             # espejo horizontal para control más natural
+MIRROR = True              # espejo horizontal para control más natural
 
 # Spawning (mantengo frecuencia; solo hacemos más lentos los cuadros)
 SPAWN_EVERY = 0.8                 # segundos entre spawns
-SPEED_MIN, SPEED_MAX = 80, 140    # ⬅️ velocidades más LENTAS (antes 180–320 px/s)
+SPEED_MIN, SPEED_MAX = 80, 140    # velocidades más lentas
 SIZE_MIN, SIZE_MAX = 50, 100      # tamaño del cuadro
 
 # Puntuación (sin game over)
@@ -30,9 +31,9 @@ CUT_SCORE = 10
 
 # Detección de corte (más reactivo)
 TRAIL_MAXLEN = 18         # menos puntos en la estela → más “viva”
-MIN_MOVE_PIX = 6          # ⬇️ desplazamiento mínimo entre frames
-SPEED_GATE = 90           # ⬇️ velocidad mínima del segmento (px/s)
-CUT_COOLDOWN = 0.06       # ⬇️ cooldown por cuadro (más cortes posibles)
+MIN_MOVE_PIX = 6          # desplazamiento mínimo entre frames
+SPEED_GATE = 90           # velocidad mínima del segmento (px/s)
+CUT_COOLDOWN = 0.06       # cooldown por cuadro (más cortes posibles)
 
 # Visual
 SQUARE_COLOR = (60, 170, 255)     # BGR
@@ -156,8 +157,13 @@ def run(camera_index: int = 0) -> None:
         print("❌ No se pudo abrir la cámara para el mini-juego")
         return
 
-    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
+    # ---- Pantalla completa (en lugar de WINDOW_NORMAL/resizeWindow) ----
+    if FULLSCREEN:
+        cv2.namedWindow(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
 
     # MediaPipe Hands (más estrictos para tracking → menos ruido)
     hands = mp_hands.Hands(
@@ -165,14 +171,14 @@ def run(camera_index: int = 0) -> None:
         max_num_hands=1,
         model_complexity=1,
         min_detection_confidence=0.7,
-        min_tracking_confidence=0.8,  # ⬆️ mejor seguimiento → respuesta más estable/rápida
+        min_tracking_confidence=0.8,
     )
 
     game = Game()
     prev_tip: Optional[Tuple[int,int,float]] = None  # (x,y,t)
 
     print("[ MiniJuego ] Corta los cuadros moviendo tu mano sobre ellos")
-    print("Controles: k (volver), r (reiniciar), q/ESC (salir)")
+    print("Controles: k (volver), r (reiniciar), q/ESC: salir")
 
     last_time = time.time()
     try:
@@ -184,6 +190,7 @@ def run(camera_index: int = 0) -> None:
             if MIRROR:
                 frame = cv2.flip(frame, 1)
 
+            # Reescalamos a tamaño lógico del juego (la ventana ya es fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
             now = time.time()
