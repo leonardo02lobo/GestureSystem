@@ -8,7 +8,7 @@ import sys
 from pyzbar.pyzbar import decode
 
 WINDOW_QR = "Modo QR"
-
+FULLSCREEN = True  # ← pantalla completa ON/OFF
 
 def ventana_tiene_focus(expected_name: str) -> bool:
     """
@@ -31,7 +31,13 @@ def run(camera_index: int = 0) -> None:
         print("❌ No se pudo abrir la cámara para el modo QR")
         return
 
-    cv2.namedWindow(WINDOW_QR, cv2.WINDOW_NORMAL)
+    # —— Pantalla completa ——
+    if FULLSCREEN:
+        cv2.namedWindow(WINDOW_QR, cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty(WINDOW_QR, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.namedWindow(WINDOW_QR, cv2.WINDOW_NORMAL)
+
     print("[ MODO QR ] Presiona 'k' para cambiar de modo | 'q' o ESC para salir")
 
     bloqueado = False
@@ -49,7 +55,7 @@ def run(camera_index: int = 0) -> None:
         if cv2.getWindowProperty(WINDOW_QR, cv2.WND_PROP_VISIBLE) < 1:
             break
 
-        # Pausar si no hay foco (solo X11)
+        # Pausar si no hay foco (solo X11 con xdotool)
         if not ventana_tiene_focus(WINDOW_QR):
             if not bloqueado:
                 print("🔒 Ventana sin focus — escaneo pausado")

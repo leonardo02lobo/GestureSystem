@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import cv2
-import sys
 import time
 from typing import Optional, Tuple
-
 import mediapipe as mp
 
 WINDOW_TITLE = "Menu por Gestos (4 cuadrantes)"
+# El tamaño lógico se mantiene para cálculos; la ventana real es fullscreen
 WIN_W, WIN_H = 960, 540
 MIRROR = True
 
 DWELL_SECONDS = 1.2
 
+# Confianza mínima de MediaPipe
 MIN_CONFIDENCE_DET = 0.7
 MIN_CONFIDENCE_TRACK = 0.6
 
@@ -28,10 +28,6 @@ mp_drawing = mp.solutions.drawing_utils
 
 
 def _quadrant_of(x_norm: float, y_norm: float) -> str:
-    """
-    Recibe coordenadas normalizadas [0..1] de la muñeca y devuelve:
-    'TL' (top-left), 'TR', 'BL', 'BR'
-    """
     left = x_norm < 0.5
     top = y_norm < 0.5
     if top and left:
@@ -44,7 +40,6 @@ def _quadrant_of(x_norm: float, y_norm: float) -> str:
 
 
 def _draw_overlay(frame, q: Optional[str], progress: float):
-    """Pinta las 4 zonas, títulos, y barra de progreso del cuadrante activo."""
     h, w = frame.shape[:2]
     half_w, half_h = w // 2, h // 2
 
@@ -53,43 +48,41 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
         x0, y0, x1, y1 = rect
         cv2.rectangle(overlay, (x0, y0), (x1, y1), color, -1)
 
-    fill((0, 0,        half_w, half_h), COLOR_TL)  
-    fill((half_w, 0,   w,      half_h), COLOR_TR)  
-    fill((0, half_h,   half_w, h),      COLOR_BL)  
-    fill((half_w,half_h, w,    h),      COLOR_BR)  
+    fill((0, 0,        half_w, half_h), COLOR_TL)  # TL
+    fill((half_w, 0,   w,      half_h), COLOR_TR)  # TR
+    fill((0, half_h,   half_w, h),      COLOR_BL)  # BL
+    fill((half_w,half_h, w,    h),      COLOR_BR)  # BR
 
     cv2.addWeighted(overlay, 0.13, frame, 0.87, 0, frame)
 
-    # separadores
+    # Separadores
     cv2.line(frame, (half_w, 0), (half_w, h), (255,255,255), 1)
     cv2.line(frame, (0, half_h), (w, half_h), (255,255,255), 1)
 
-    # títulos
-    cv2.putText(frame, "QR",        (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                          # TL
-    cv2.putText(frame, "JUEGO",     (w - 160, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                      # TR
-    cv2.putText(frame, "(Libre)",   (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)                        # BL
-    cv2.putText(frame, "GESTOS",    (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                   # BR
+    # Títulos
+    cv2.putText(frame, "QR",        (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)            
+    cv2.putText(frame, "JUEGO",     (w - 160, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
+    cv2.putText(frame, "(Libre)",   (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)
+    cv2.putText(frame, "GESTOS",    (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
 
+    # barra de progreso según cuadrante activo
     if q is not None:
         total = int(w * 0.38)
         filled = int(total * max(0.0, min(1.0, progress)))
         pad = 20
         if q == "TL":
-            x0, y0 = pad, pad
-            color = COLOR_TL
+            x0, y0 = pad, pad; color = COLOR_TL
         elif q == "TR":
-            x0, y0 = w - pad - total, pad
-            color = COLOR_TR
+            x0, y0 = w - pad - total, pad; color = COLOR_TR
         elif q == "BL":
-            x0, y0 = pad, h - pad - BAR_H
-            color = COLOR_BL
-        else:  # "BR"
-            x0, y0 = w - pad - total, h - pad - BAR_H
-            color = COLOR_BR
+            x0, y0 = pad, h - pad - BAR_H; color = COLOR_BL
+        else:
+            x0, y0 = w - pad - total, h - pad - BAR_H; color = COLOR_BR
 
         cv2.rectangle(frame, (x0, y0), (x0 + filled, y0 + BAR_H), color, -1)
         cv2.rectangle(frame, (x0, y0), (x0 + total, y0 + BAR_H), (255,255,255), 1)
 
+    # instrucciones
     cv2.putText(frame, "Mantene la mano ~1.2s en un cuadrante para seleccionar",
                 (20, h//2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230,230,230), 2)
     cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | ESC para salir",
@@ -99,19 +92,20 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
 def run(camera_index: int = 0) -> Optional[str]:
     """
     Devuelve:
-      'qr'     si el usuario confirma en TL
-      'juego'  si el usuario confirma en TR
-      'gestos' si el usuario confirma en BR
+      'qr'     si confirma en TL
+      'juego'  si confirma en TR
+      'gestos' si confirma en BR
       None     si sale (ESC)
-    BL se deja libre por ahora.
+    BL queda libre por ahora.
     """
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print("❌ No se pudo abrir la cámara para el menú")
         return None
 
-    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
+    # ---- Pantalla completa ----
+    cv2.namedWindow(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
     hands = mp_hands.Hands(
         static_image_mode=False,
@@ -132,8 +126,11 @@ def run(camera_index: int = 0) -> Optional[str]:
 
             if MIRROR:
                 frame = cv2.flip(frame, 1)
+
+            # Reescalamos para cálculos/UI (la ventana ya es fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
+            # Detección de mano
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
@@ -177,7 +174,7 @@ def run(camera_index: int = 0) -> Optional[str]:
                 cap.release()
                 cv2.destroyWindow(WINDOW_TITLE)
                 return None
-            # Atajos de teclado
+            # Atajos
             if key == ord('1'):
                 cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "qr"
             if key == ord('2'):
