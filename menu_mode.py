@@ -11,14 +11,15 @@ WIN_W, WIN_H = 960, 540
 MIRROR = True
 
 DWELL_SECONDS = 1.2
+
+# Confianza mínima de MediaPipe
 MIN_CONFIDENCE_DET = 0.7
 MIN_CONFIDENCE_TRACK = 0.6
 
-# Colores (BGR)
-COLOR_TL = (70, 170, 255)   # QR (arriba-izq)
-COLOR_TR = (60, 255, 160)   # Juego (arriba-der)
-COLOR_BL = (180, 180, 180)  # Vacío (abajo-izq)
-COLOR_BR = (255, 180, 60)   # Gestos (abajo-der)
+COLOR_TL = (70, 170, 255)   
+COLOR_TR = (60, 255, 160)   
+COLOR_BL = (180, 180, 180)  
+COLOR_BR = (255, 180, 60)   
 COLOR_TXT = (255, 255, 255)
 BAR_H = 12
 
@@ -47,7 +48,6 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
         x0, y0, x1, y1 = rect
         cv2.rectangle(overlay, (x0, y0), (x1, y1), color, -1)
 
-    # Cuadrantes
     fill((0, 0,        half_w, half_h), COLOR_TL)  # TL
     fill((half_w, 0,   w,      half_h), COLOR_TR)  # TR
     fill((0, half_h,   half_w, h),      COLOR_BL)  # BL
@@ -65,7 +65,7 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
     cv2.putText(frame, "(Libre)",   (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)
     cv2.putText(frame, "GESTOS",    (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
 
-    # Barra de progreso del cuadrante activo
+    # barra de progreso según cuadrante activo
     if q is not None:
         total = int(w * 0.38)
         filled = int(total * max(0.0, min(1.0, progress)))
@@ -82,7 +82,7 @@ def _draw_overlay(frame, q: Optional[str], progress: float):
         cv2.rectangle(frame, (x0, y0), (x0 + filled, y0 + BAR_H), color, -1)
         cv2.rectangle(frame, (x0, y0), (x0 + total, y0 + BAR_H), (255,255,255), 1)
 
-    # Instrucciones
+    # instrucciones
     cv2.putText(frame, "Mantene la mano ~1.2s en un cuadrante para seleccionar",
                 (20, h//2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230,230,230), 2)
     cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | ESC para salir",
@@ -130,7 +130,7 @@ def run(camera_index: int = 0) -> Optional[str]:
             # Reescalamos para cálculos/UI (la ventana ya es fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
-            # Mano
+            # Detección de mano
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
@@ -170,7 +170,7 @@ def run(camera_index: int = 0) -> Optional[str]:
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord('q')):   # salir
+            if key in (27, ord('q')):   
                 cap.release()
                 cv2.destroyWindow(WINDOW_TITLE)
                 return None
