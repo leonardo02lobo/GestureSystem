@@ -6,8 +6,6 @@ from typing import Optional, Tuple
 import mediapipe as mp
 
 WINDOW_TITLE = "Menu por Gestos (4 cuadrantes)"
-
-# Tamaño lógico para procesar/overlay (la ventana real puede ser fullscreen)
 WIN_W, WIN_H = 960, 540
 MIRROR = True
 
@@ -15,123 +13,100 @@ DWELL_SECONDS = 1.2
 MIN_CONFIDENCE_DET = 0.7
 MIN_CONFIDENCE_TRACK = 0.6
 
-# Pantalla completa cross-platform
-FULLSCREEN = True  # ← arranca en pantalla completa
-_is_fullscreen = False  # estado interno
+FULLSCREEN = True
+_is_fullscreen = False
 
-COLOR_TL = (70, 170, 255)   # QR (arriba-izq)
-COLOR_TR = (60, 255, 160)   # Juego (arriba-der)
-COLOR_BL = (180, 180, 180)  # Vacío (abajo-izq)
-COLOR_BR = (255, 180, 60)   # Gestos (abajo-der)
+COLOR_TL = (70, 170, 255)   # QR (TL)
+COLOR_TR = (60, 255, 160)   # JUEGO (TR)
+COLOR_BL = (255, 200, 90)   # FOTO (BL)  ← antes Libre
+COLOR_BR = (255, 180, 60)   # GESTOS (BR)
 COLOR_TXT = (255, 255, 255)
 BAR_H = 12
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-
 def _quadrant_of(x_norm: float, y_norm: float) -> str:
     left = x_norm < 0.5
     top = y_norm < 0.5
-    if top and left:
-        return "TL"
-    if top and not left:
-        return "TR"
-    if not top and left:
-        return "BL"
+    if top and left:  return "TL"
+    if top and not left: return "TR"
+    if not top and left: return "BL"
     return "BR"
-
 
 def _draw_overlay(frame, q: Optional[str], progress: float):
     h, w = frame.shape[:2]
     half_w, half_h = w // 2, h // 2
 
     overlay = frame.copy()
-
     def fill(rect, color):
         x0, y0, x1, y1 = rect
         cv2.rectangle(overlay, (x0, y0), (x1, y1), color, -1)
 
-    # Cuadrantes
     fill((0, 0,          half_w, half_h), COLOR_TL)  # TL
     fill((half_w, 0,     w,      half_h), COLOR_TR)  # TR
-    fill((0, half_h,     half_w, h),      COLOR_BL)  # BL
+    fill((0, half_h,     half_w, h),      COLOR_BL)  # BL (FOTO)
     fill((half_w, half_h, w,     h),      COLOR_BR)  # BR
 
     cv2.addWeighted(overlay, 0.13, frame, 0.87, 0, frame)
-
-    # Separadores
     cv2.line(frame, (half_w, 0), (half_w, h), (255, 255, 255), 1)
     cv2.line(frame, (0, half_h), (w, half_h), (255, 255, 255), 1)
 
-    # Títulos
-    cv2.putText(frame, "QR", (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
-    cv2.putText(frame, "JUEGO", (w - 160, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
-    cv2.putText(frame, "(Libre)", (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)
-    cv2.putText(frame, "GESTOS", (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
+    cv2.putText(frame, "QR",     (20, 36),           cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
+    cv2.putText(frame, "JUEGO",  (w - 160, 36),      cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
+    cv2.putText(frame, "FOTO",   (20, h - 20),       cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)  # ← BL
+    cv2.putText(frame, "GESTOS", (w - 180, h - 20),  cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)
 
-    # Barra de progreso del cuadrante activo
     if q is not None:
         total = int(w * 0.38)
         filled = int(total * max(0.0, min(1.0, progress)))
         pad = 20
         if q == "TL":
-            x0, y0 = pad, pad
-            color = COLOR_TL
+            x0, y0 = pad, pad; color = COLOR_TL
         elif q == "TR":
-            x0, y0 = w - pad - total, pad
-            color = COLOR_TR
+            x0, y0 = w - pad - total, pad; color = COLOR_TR
         elif q == "BL":
-            x0, y0 = pad, h - pad - BAR_H
-            color = COLOR_BL
-        else:  # BR
-            x0, y0 = w - pad - total, h - pad - BAR_H
-            color = COLOR_BR
+            x0, y0 = pad, h - pad - BAR_H; color = COLOR_BL
+        else:
+            x0, y0 = w - pad - total, h - pad - BAR_H; color = COLOR_BR
 
         cv2.rectangle(frame, (x0, y0), (x0 + filled, y0 + BAR_H), color, -1)
         cv2.rectangle(frame, (x0, y0), (x0 + total, y0 + BAR_H), (255, 255, 255), 1)
 
-    # Instrucciones
     cv2.putText(frame, "Mantene la mano ~1.2s en un cuadrante para seleccionar",
                 (20, h // 2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230, 230, 230), 2)
-    cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | ESC salir | f Fullscreen",
+    cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | 4=Foto | ESC salir | f Fullscreen",
                 (20, h // 2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1)
 
-
 def _set_fullscreen(enable: bool):
-    """Activa/desactiva fullscreen (Windows y Linux)."""
     global _is_fullscreen
     try:
         if enable:
             cv2.namedWindow(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN)
             cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         else:
-            # Volver a ventana normal del tamaño lógico
             cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
         _is_fullscreen = enable
     except Exception:
-        # Fallback: usa ventana normal redimensionada si fullscreen no es soportado
         cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
         _is_fullscreen = False
 
-
 def run(camera_index: int = 0) -> Optional[str]:
     """
     Devuelve:
-      'qr'     si confirma en TL
-      'juego'  si confirma en TR
-      'gestos' si confirma en BR
+      'qr'     (TL)
+      'juego'  (TR)
+      'gestos' (BR)
+      'foto'   (BL)
       None     si sale (ESC)
-    BL queda libre por ahora.
     """
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print("❌ No se pudo abrir la cámara para el menú")
         return None
 
-    # Inicia fullscreen (Windows y Linux). Si falla, usa ventana normal.
     _set_fullscreen(FULLSCREEN)
 
     hands = mp_hands.Hands(
@@ -153,11 +128,8 @@ def run(camera_index: int = 0) -> Optional[str]:
 
             if MIRROR:
                 frame = cv2.flip(frame, 1)
-
-            # Reescalamos a tamaño lógico (la ventana puede ser fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
-            # Mano
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
@@ -180,7 +152,7 @@ def run(camera_index: int = 0) -> Optional[str]:
                 progress = min(1.0, elapsed / DWELL_SECONDS)
 
                 if elapsed >= DWELL_SECONDS:
-                    sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos"}
+                    sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos", "BL": "foto"}
                     selection = sel_map.get(q_active)
                     if selection is not None:
                         cap.release()
@@ -207,10 +179,10 @@ def run(camera_index: int = 0) -> Optional[str]:
                 cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "juego"
             if key == ord('3'):
                 cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "gestos"
+            if key == ord('4'):
+                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "foto"
             if key == ord('f'):
-                # Toggle fullscreen ↔ ventana
                 _set_fullscreen(not _is_fullscreen)
-
     finally:
         cap.release()
         cv2.destroyAllWindows()
