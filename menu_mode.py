@@ -1,12 +1,11 @@
 from __future__ import annotations
-
 import cv2
 import time
 from typing import Optional
 import mediapipe as mp
 
 WINDOW_TITLE = "Menu por Gestos (4 cuadrantes)"
-WIN_W, WIN_H = 1200, 960   # Ahora cuadrada
+WIN_W, WIN_H = 1200, 960
 MIRROR = True
 
 DWELL_SECONDS = 1.2
@@ -16,10 +15,12 @@ MIN_CONFIDENCE_TRACK = 0.6
 FULLSCREEN = True
 _is_fullscreen = False
 
-COLOR_TL = (70, 170, 255)   # QR (TL)
-COLOR_TR = (60, 255, 160)   # JUEGO (TR)
-COLOR_BL = (255, 200, 90)   # FOTO (BL)
-COLOR_BR = (255, 180, 60)   # GESTOS (BR)
+GESTO_CERRAR_SEG = 3  # Segundos que hay que mantener el puño cerrado
+
+COLOR_TL = (70, 170, 255)   # QR
+COLOR_TR = (60, 255, 160)   # JUEGO
+COLOR_BL = (255, 200, 90)   # FOTO
+COLOR_BR = (255, 180, 60)   # GESTOS
 COLOR_TXT = (255, 255, 255)
 BAR_H = 12
 
@@ -101,13 +102,23 @@ def _set_fullscreen(enable: bool):
         _is_fullscreen = False
 
 
+def es_punio_cerrado(lm) -> bool:
+    """Detecta si todos los dedos están doblados (puño cerrado)"""
+    # Comparamos y coordenada de las puntas con las articulaciones intermedias
+    dedos_puntas = [8, 12, 16, 20]
+    dedos_intermedios = [6, 10, 14, 18]
+    for tip, pip in zip(dedos_puntas, dedos_intermedios):
+        if lm.landmark[tip].y < lm.landmark[pip].y:
+            return False
+    return True
+
+
 def run(camera_index: int = 0) -> Optional[str]:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
         print("❌ No se pudo abrir la cámara para el menú")
         return None
 
-    # También fijamos resolución de captura
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, WIN_W)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WIN_H)
 
@@ -124,6 +135,8 @@ def run(camera_index: int = 0) -> Optional[str]:
     dwell_q: Optional[str] = None
     dwell_start: float = 0.0
 
+    punio_start: float | None = None  # tiempo inicio del puño cerrado
+
     try:
         while True:
             ok, frame = cap.read()
@@ -134,7 +147,6 @@ def run(camera_index: int = 0) -> Optional[str]:
                 frame = cv2.flip(frame, 1)
 
             frame = cv2.resize(frame, (WIN_W, WIN_H))
-
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
@@ -145,47 +157,62 @@ def run(camera_index: int = 0) -> Optional[str]:
                 lms = res.multi_hand_landmarks[0]
                 mp_drawing.draw_landmarks(frame, lms, mp_hands.HAND_CONNECTIONS)
 
-                wrist = lms.landmark[0]
-                x_norm, y_norm = wrist.x, wrist.y
-                q_active = _quadrant_of(x_norm, y_norm)
-
-                now = time.time()
-                if dwell_q != q_active:
-                    dwell_q = q_active
-                    dwell_start = now
-                elapsed = now - dwell_start
-                progress = min(1.0, elapsed / DWELL_SECONDS)
-
-                if elapsed >= DWELL_SECONDS:
-                    sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos", "BL": "foto"}
-                    selection = sel_map.get(q_active)
-                    if selection is not None:
-                        cap.release()
-                        cv2.destroyWindow(WINDOW_TITLE)
-                        return selection
+                # Detectar puño cerrado
+                if es_punio_cerrado(lms):
+                    if punio_start is None:
+                        punio_start = time.time()
                     else:
-                        dwell_q = None
-                        dwell_start = 0.0
+                        elapsed_punio = time.time() - punio_start
+                        cv2.putText(frame, f"Cerrando en: {GESTO_CERRAR_SEG - int(elapsed_punio)}s",
+                                    (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+                        if elapsed_punio >= GESTO_CERRAR_SEG:
+                            print("✅ Puño cerrado detectado — cerrando app...")
+                            break
+                else:
+                    punio_start = None
+
+                # Cuadrante solo si no hay puño cerrado
+                if punio_start is None:
+                    wrist = lms.landmark[0]
+                    x_norm, y_norm = wrist.x, wrist.y
+                    q_active = _quadrant_of(x_norm, y_norm)
+
+                    now = time.time()
+                    if dwell_q != q_active:
+                        dwell_q = q_active
+                        dwell_start = now
+                    elapsed = now - dwell_start
+                    progress = min(1.0, elapsed / DWELL_SECONDS)
+
+                    if elapsed >= DWELL_SECONDS:
+                        sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos", "BL": "foto"}
+                        selection = sel_map.get(q_active)
+                        if selection is not None:
+                            cap.release()
+                            cv2.destroyWindow(WINDOW_TITLE)
+                            return selection
+                        else:
+                            dwell_q = None
+                            dwell_start = 0.0
             else:
                 dwell_q = None
                 dwell_start = 0.0
+                punio_start = None
 
             _draw_overlay(frame, q_active, progress)
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key in (27, ord('q')):
-                cap.release()
-                cv2.destroyWindow(WINDOW_TITLE)
-                return None
+                break
             if key == ord('1'):
-                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "qr"
+                return "qr"
             if key == ord('2'):
-                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "juego"
+                return "juego"
             if key == ord('3'):
-                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "gestos"
+                return "gestos"
             if key == ord('4'):
-                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "foto"
+                return "foto"
             if key == ord('f'):
                 _set_fullscreen(not _is_fullscreen)
     finally:
