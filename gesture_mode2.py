@@ -41,10 +41,22 @@ SQUARE_ALPHA = 0.35
 TRAIL_COLOR = (40, 220, 255)
 HUD_COLOR = (255, 255, 255)
 
+# —— NUEVO: tiempo de partida ——
+GAME_DURATION = 60.0          # segundos
+POST_GAME_WAIT = 3.0          # segundos para mostrar mensaje final
+
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
 Point = Tuple[int, int]
+
+def detectar_gesto_ok(lm) -> bool:
+    thumb_tip = lm.landmark[4]
+    index_tip = lm.landmark[8]
+    dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
+    return dist < 0.05
+
+# (Funciones auxiliares para intersecciones y dibujado, las dejo igual que en tu código original)
 
 def _ccw(a: Point, b: Point, c: Point) -> int:
     return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
@@ -143,6 +155,22 @@ class Game:
                 sq.last_cut_time = now
                 self.score += CUT_SCORE
 
+def _draw_centered_big_text(frame, text: str, scale=1.4, thickness=3,
+                            color=(255,255,255), shadow=(0,0,0)):
+    h, w = frame.shape[:2]
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
+    x = (w - tw) // 2
+    y = (h // 2) + th // 2
+    if shadow:
+        cv2.putText(frame, text, (x+2, y+2), cv2.FONT_HERSHEY_SIMPLEX, scale, shadow, thickness+2, cv2.LINE_AA)
+    cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+
+def _format_mmss(seconds_left: float) -> str:
+    seconds_left = max(0, int(seconds_left + 0.499))  # redondeo visual
+    m = seconds_left // 60
+    s = seconds_left % 60
+    return f"{m:01d}:{s:02d}"
+
 def run(camera_index: int = 0) -> None:
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -166,7 +194,10 @@ def run(camera_index: int = 0) -> None:
     )
 
     game = Game()
-    prev_tip: Optional[Tuple[int,int,float]] = None  # (x,y,t)
+    prev_tip: Optional[Tuple[int,int,float]] = None
+
+    DELAY_OK = 3.0
+    ok_gesture_start: float | None = None
 
     print("[ MiniJuego ] Corta los cuadros moviendo tu mano sobre ellos")
     print("Controles: k (volver), r (reiniciar), q/ESC: salir")
@@ -188,6 +219,11 @@ def run(camera_index: int = 0) -> None:
             dt = max(1e-3, now - last_time)
             last_time = now
 
+            # Tiempo restante
+            elapsed_game = now - game_start_time
+            time_left = GAME_DURATION - elapsed_game
+
+            # Mano
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
             tip_xy: Optional[Tuple[int,int]] = None
@@ -200,22 +236,40 @@ def run(camera_index: int = 0) -> None:
                 y_px = int(tip.y * WIN_H)
                 tip_xy = (x_px, y_px)
 
+                if detectar_gesto_ok(lms):
+                    gesto_ok_detectado = True
+
             game.update(dt, now)
 
-            if tip_xy:
-                game.register_trail_point(tip_xy[0], tip_xy[1], now)
-                if prev_tip:
-                    p1 = (prev_tip[0], prev_tip[1])
-                    p2 = (tip_xy[0], tip_xy[1])
-                    seg_dt = max(1e-3, now - prev_tip[2])
-                    dx = p2[0] - p1[0]
-                    dy = p2[1] - p1[1]
-                    seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
-                    if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
-                        game.try_slice_with_segment(p1, p2, seg_speed, now)
-                prev_tip = (tip_xy[0], tip_xy[1], now)
+                if tip_xy:
+                    game.register_trail_point(tip_xy[0], tip_xy[1], now)
+                    if prev_tip:
+                        p1 = (prev_tip[0], prev_tip[1])
+                        p2 = (tip_xy[0], tip_xy[1])
+                        seg_dt = max(1e-3, now - prev_tip[2])
+                        dx = p2[0] - p1[0]
+                        dy = p2[1] - p1[1]
+                        seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
+                        if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
+                            game.try_slice_with_segment(p1, p2, seg_speed, now)
+                    prev_tip = (tip_xy[0], tip_xy[1], now)
+                else:
+                    prev_tip = None
+
+            # Mostrar cuenta regresiva si gesto OK mantenido
+            if gesto_ok_detectado:
+                if ok_gesture_start is None:
+                    ok_gesture_start = now
+                else:
+                    tiempo_mantener = now - ok_gesture_start
+                    tiempo_restante = int(DELAY_OK - tiempo_mantener + 1)
+                    cv2.putText(frame, f"Volver en: {tiempo_restante}s",
+                                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    if tiempo_mantener >= DELAY_OK:
+                        print("✅ Gesto OK mantenido, volviendo...")
+                        break
             else:
-                prev_tip = None
+                ok_gesture_start = None
 
             for sq in game.squares:
                 x, y, w, h = sq.rect()
@@ -223,16 +277,18 @@ def run(camera_index: int = 0) -> None:
                 draw_filled_rect_alpha(frame, (x, y, w, h), color, SQUARE_ALPHA if sq.alive else 0.15)
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
 
+            # Estela del índice
             pts = [(x, y) for (x, y, t) in game.trail]
             for i in range(1, len(pts)):
                 cv2.line(frame, pts[i-1], pts[i], TRAIL_COLOR, 2)
             if tip_xy:
                 cv2.circle(frame, tip_xy, 6, (0, 255, 255), -1)
 
+            # HUD: puntaje + tiempo restante MM:SS
             cv2.putText(frame, f"Puntaje: {game.score}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, HUD_COLOR, 2)
-            cv2.putText(frame, "k: volver | r: reiniciar | q/ESC: salir", (10, 58),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, HUD_COLOR, 1)
+            cv2.putText(frame, "r: reiniciar | q/ESC: salir | Gesto OK (mantener 3s) para volver", (10, 58),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, HUD_COLOR, 1)
 
             cv2.imshow(WINDOW_TITLE, frame)
 
@@ -246,6 +302,8 @@ def run(camera_index: int = 0) -> None:
             if key == ord('r'):
                 game.reset()
                 prev_tip = None
+                # Reiniciar también el temporizador de partida
+                game_start_time = time.time()
 
     finally:
         cap.release()
