@@ -6,10 +6,11 @@ import time
 import datetime
 
 WINDOW_TITLE = "Captura de Foto"
-FULLSCREEN = True          # pantalla completa ON/OFF
-MIRROR = True              # espejo horizontal para control natural
-COUNTDOWN_SECONDS = 3      # segundos de conteo antes de capturar
-FLASH_MS = 120             # duración del flash visual al capturar
+FULLSCREEN = False          # ventana tamaño fijo
+MIRROR = True               # espejo horizontal para control natural
+COUNTDOWN_SECONDS = 3       # segundos de conteo antes de capturar
+FLASH_MS = 120              # duración del flash visual al capturar
+WIN_W, WIN_H = 960, 540     # resolución fija ventana y cámara
 
 def _set_fullscreen():
     try:
@@ -40,10 +41,15 @@ def capture_photo(save_dir="photos", camera_index: int = 0):
         print("❌ No se pudo acceder a la cámara.")
         return None
 
+    # Fijar resolución de captura
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, WIN_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WIN_H)
+
     if FULLSCREEN:
         _set_fullscreen()
     else:
         cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
 
     print(f"📸 Iniciando conteo de {COUNTDOWN_SECONDS} segundos... (ESC para cancelar)")
 
@@ -58,6 +64,9 @@ def capture_photo(save_dir="photos", camera_index: int = 0):
 
             if MIRROR:
                 frame = cv2.flip(frame, 1)
+
+            # Redimensionar por si no está en la resolución fija
+            frame = cv2.resize(frame, (WIN_W, WIN_H))
 
             # Tiempo restante
             elapsed = time.time() - start

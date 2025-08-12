@@ -11,33 +11,33 @@ from typing import Deque, List, Tuple, Optional
 
 import mediapipe as mp
 
-WINDOW_TITLE = "MiniJuego: Slice the Squares (k: volver, r: reiniciar, q/ESC: salir)"
+WINDOW_TITLE = "MiniJuego: Slice the Squares (r: reiniciar, q/ESC: salir)"
 
 # Tamaño deseado de la ventana de juego (se reescala el frame de cámara a esto)
 WIN_W, WIN_H = 960, 540
-FULLSCREEN = True          # ← pantalla completa ON/OFF
+FULLSCREEN = False  # Ventana tamaño fijo
 
 # Comportamiento de cámara
-MIRROR = True             # espejo horizontal para control más natural
+MIRROR = True  # espejo horizontal para control más natural
 
 # Spawning (mantengo frecuencia; solo hacemos más lentos los cuadros)
-SPAWN_EVERY = 0.8                 # segundos entre spawns
-SPEED_MIN, SPEED_MAX = 80, 140    # ⬅️ velocidades más LENTAS (antes 180–320 px/s)
-SIZE_MIN, SIZE_MAX = 50, 100      # tamaño del cuadro
+SPAWN_EVERY = 0.8
+SPEED_MIN, SPEED_MAX = 80, 140
+SIZE_MIN, SIZE_MAX = 50, 100
 
-# Puntuación (sin game over)
+# Puntuación
 CUT_SCORE = 10
 
 # Detección de corte (más reactivo)
-TRAIL_MAXLEN = 18         # menos puntos en la estela → más “viva”
-MIN_MOVE_PIX = 6          # ⬇️ desplazamiento mínimo entre frames
-SPEED_GATE = 90           # ⬇️ velocidad mínima del segmento (px/s)
-CUT_COOLDOWN = 0.06       # ⬇️ cooldown por cuadro (más cortes posibles)
+TRAIL_MAXLEN = 18
+MIN_MOVE_PIX = 6
+SPEED_GATE = 90
+CUT_COOLDOWN = 0.06
 
 # Visual
-SQUARE_COLOR = (60, 170, 255)     # BGR
+SQUARE_COLOR = (60, 170, 255)
 SQUARE_CUT_COLOR = (60, 255, 160)
-SQUARE_ALPHA = 0.35              
+SQUARE_ALPHA = 0.35
 TRAIL_COLOR = (40, 220, 255)
 HUD_COLOR = (255, 255, 255)
 
@@ -45,6 +45,14 @@ mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
 Point = Tuple[int, int]
+
+def detectar_gesto_ok(lm) -> bool:
+    thumb_tip = lm.landmark[4]
+    index_tip = lm.landmark[8]
+    dist = ((thumb_tip.x - index_tip.x) ** 2 + (thumb_tip.y - index_tip.y) ** 2) ** 0.5
+    return dist < 0.05
+
+# (Funciones auxiliares para intersecciones y dibujado, las dejo igual que en tu código original)
 
 def _ccw(a: Point, b: Point, c: Point) -> int:
     return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
@@ -125,7 +133,7 @@ class Game:
             self.spawn_square(now)
         for sq in self.squares:
             sq.update(dt)
-        self.squares = [s for s in self.squares if s.y <= WIN_H + 2 and s.alive or s.alive]
+        self.squares = [s for s in self.squares if (s.y <= WIN_H + 2 and s.alive) or s.alive]
 
     def register_trail_point(self, x: int, y: int, t: float):
         self.trail.append((x, y, t))
@@ -149,27 +157,30 @@ def run(camera_index: int = 0) -> None:
         print("❌ No se pudo abrir la cámara para el mini-juego")
         return
 
-    # ---- Pantalla completa (en lugar de WINDOW_NORMAL/resizeWindow) ----
-    if FULLSCREEN:
-        cv2.namedWindow(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    else:
-        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
+    # Fijar resolución de captura
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, WIN_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, WIN_H)
+
+    # Ventana tamaño fijo
+    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(WINDOW_TITLE, WIN_W, WIN_H)
 
     hands = mp_hands.Hands(
         static_image_mode=False,
         max_num_hands=1,
         model_complexity=1,
         min_detection_confidence=0.7,
-        min_tracking_confidence=0.8,  # ⬆️ mejor seguimiento → respuesta más estable/rápida
+        min_tracking_confidence=0.8,
     )
 
     game = Game()
-    prev_tip: Optional[Tuple[int,int,float]] = None  # (x,y,t)
+    prev_tip: Optional[Tuple[int,int,float]] = None
+
+    DELAY_OK = 3.0
+    ok_gesture_start: float | None = None
 
     print("[ MiniJuego ] Corta los cuadros moviendo tu mano sobre ellos")
-    print("Controles: k (volver), r (reiniciar), q/ESC: salir")
+    print("Controles: r (reiniciar), q/ESC (salir), gesto OK (mantener 3s) para volver")
 
     last_time = time.time()
     try:
@@ -181,7 +192,6 @@ def run(camera_index: int = 0) -> None:
             if MIRROR:
                 frame = cv2.flip(frame, 1)
 
-            # Reescalamos a tamaño lógico del juego (la ventana ya es fullscreen)
             frame = cv2.resize(frame, (WIN_W, WIN_H))
 
             now = time.time()
@@ -192,6 +202,8 @@ def run(camera_index: int = 0) -> None:
             res = hands.process(rgb)
             tip_xy: Optional[Tuple[int,int]] = None
 
+            gesto_ok_detectado = False
+
             if res.multi_hand_landmarks:
                 lms = res.multi_hand_landmarks[0]
                 mp_drawing.draw_landmarks(frame, lms, mp_hands.HAND_CONNECTIONS)
@@ -199,6 +211,9 @@ def run(camera_index: int = 0) -> None:
                 x_px = int(tip.x * WIN_W)
                 y_px = int(tip.y * WIN_H)
                 tip_xy = (x_px, y_px)
+
+                if detectar_gesto_ok(lms):
+                    gesto_ok_detectado = True
 
             game.update(dt, now)
 
@@ -217,6 +232,21 @@ def run(camera_index: int = 0) -> None:
             else:
                 prev_tip = None
 
+            # Mostrar cuenta regresiva si gesto OK mantenido
+            if gesto_ok_detectado:
+                if ok_gesture_start is None:
+                    ok_gesture_start = now
+                else:
+                    tiempo_mantener = now - ok_gesture_start
+                    tiempo_restante = int(DELAY_OK - tiempo_mantener + 1)
+                    cv2.putText(frame, f"Volver en: {tiempo_restante}s",
+                                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    if tiempo_mantener >= DELAY_OK:
+                        print("✅ Gesto OK mantenido, volviendo...")
+                        break
+            else:
+                ok_gesture_start = None
+
             for sq in game.squares:
                 x, y, w, h = sq.rect()
                 color = SQUARE_COLOR if sq.alive else SQUARE_CUT_COLOR
@@ -231,14 +261,12 @@ def run(camera_index: int = 0) -> None:
 
             cv2.putText(frame, f"Puntaje: {game.score}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, HUD_COLOR, 2)
-            cv2.putText(frame, "k: volver | r: reiniciar | q/ESC: salir", (10, 58),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, HUD_COLOR, 1)
+            cv2.putText(frame, "r: reiniciar | q/ESC: salir | Gesto OK (mantener 3s) para volver", (10, 58),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, HUD_COLOR, 1)
 
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('k'):
-                break
             if key in (27, ord('q')):
                 cap.release()
                 cv2.destroyAllWindows()
