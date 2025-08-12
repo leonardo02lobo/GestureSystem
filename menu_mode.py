@@ -3,70 +3,113 @@ from __future__ import annotations
 import cv2
 import sys
 import time
-from typing import Optional
-import platform
+from typing import Optional, Tuple
 
 import mediapipe as mp
 
-WINDOW_TITLE = "Menu por Gestos (Izq=QR | Der=Gestos/Juego)"
+WINDOW_TITLE = "Menu por Gestos (4 cuadrantes)"
 WIN_W, WIN_H = 960, 540
 MIRROR = True
 
-# Zonas de selección (en proporción del ancho)
-LEFT_MAX_X  = 0.40   # < 40% de ancho -> IZQUIERDA (QR)
-RIGHT_MIN_X = 0.60   # > 60% de ancho -> DERECHA  (Gestos/Juego)
+# Umbral de confirmación (segundos manteniendo la mano en el cuadrante)
+DWELL_SECONDS = 1.2
 
-DWELL_SECONDS = 1.2  # tiempo de permanencia para confirmar selección
+# Confianza mínima de MediaPipe
 MIN_CONFIDENCE_DET = 0.7
 MIN_CONFIDENCE_TRACK = 0.6
 
-BAR_H = 12  # alto de la barra de progreso
+# Colores (BGR)
+COLOR_TL = (70, 170, 255)   # QR (arriba-izq)
+COLOR_TR = (60, 255, 160)   # Juego (arriba-der)
+COLOR_BL = (180, 180, 180)  # Vacío (abajo-izq)
+COLOR_BR = (255, 180, 60)   # Gestos (abajo-der)
+COLOR_TXT = (255, 255, 255)
+BAR_H = 12
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-def _draw_layout(frame, progress_left: float, progress_right: float):
+
+def _quadrant_of(x_norm: float, y_norm: float) -> str:
+    """
+    Recibe coordenadas normalizadas [0..1] de la muñeca y devuelve:
+    'TL' (top-left), 'TR', 'BL', 'BR'
+    """
+    left = x_norm < 0.5
+    top = y_norm < 0.5
+    if top and left:
+        return "TL"
+    if top and not left:
+        return "TR"
+    if not top and left:
+        return "BL"
+    return "BR"
+
+
+def _draw_overlay(frame, q: Optional[str], progress: float):
+    """Pinta las 4 zonas, títulos, y barra de progreso del cuadrante activo."""
     h, w = frame.shape[:2]
-    # Divisiones visuales
-    c_left  = (70, 170, 255)
-    c_right = (60, 255, 160)
-    # Columnas semi transparentes
+    half_w, half_h = w // 2, h // 2
+
+    # capas semitransparentes por cuadrante
     overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (int(w*LEFT_MAX_X), h), c_left, -1)
-    cv2.rectangle(overlay, (int(w*RIGHT_MIN_X), 0), (w, h), c_right, -1)
-    cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
+    def fill(rect, color):
+        x0, y0, x1, y1 = rect
+        cv2.rectangle(overlay, (x0, y0), (x1, y1), color, -1)
 
-    # Títulos
-    cv2.putText(frame, "IZQUIERDA -> Modo QR", (20, 36),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
-    cv2.putText(frame, "DERECHA  -> Gestos/Juego", (w - 380, 36),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+    fill((0, 0,        half_w, half_h), COLOR_TL)  # TL
+    fill((half_w, 0,   w,      half_h), COLOR_TR)  # TR
+    fill((0, half_h,   half_w, h),      COLOR_BL)  # BL
+    fill((half_w,half_h, w,    h),      COLOR_BR)  # BR
 
-    # Barras de progreso
-    if progress_left > 0:
-        filled = int((w * 0.45) * max(0.0, min(1.0, progress_left)))
-        cv2.rectangle(frame, (20, h - 30), (20 + filled, h - 30 + BAR_H), c_left, -1)
-        cv2.rectangle(frame, (20, h - 30), (20 + int(w*0.45), h - 30 + BAR_H), (255,255,255), 1)
+    cv2.addWeighted(overlay, 0.13, frame, 0.87, 0, frame)
 
-    if progress_right > 0:
-        total = int(w * 0.45)
-        x0 = w - 20 - total
-        filled = int(total * max(0.0, min(1.0, progress_right)))
-        cv2.rectangle(frame, (x0, h - 30), (x0 + filled, h - 30 + BAR_H), c_right, -1)
-        cv2.rectangle(frame, (x0, h - 30), (x0 + total, h - 30 + BAR_H), (255,255,255), 1)
+    # separadores
+    cv2.line(frame, (half_w, 0), (half_w, h), (255,255,255), 1)
+    cv2.line(frame, (0, half_h), (w, half_h), (255,255,255), 1)
 
-    # Indicaciones
-    cv2.putText(frame, "Mantene la mano en un lado ~1.2s para elegir",
-                (20, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230,230,230), 1)
-    cv2.putText(frame, "Atajos: 'q'=QR | 'g'=Gestos | 'ESC'/'q'=Salir",
-                (20, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220,220,220), 1)
+    # títulos
+    cv2.putText(frame, "QR",        (20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                          # TL
+    cv2.putText(frame, "JUEGO",     (w - 160, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                      # TR
+    cv2.putText(frame, "(Libre)",   (20, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TXT, 2)                        # BL
+    cv2.putText(frame, "GESTOS",    (w - 180, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.9, COLOR_TXT, 2)                   # BR
+
+    # barra de progreso según cuadrante activo
+    if q is not None:
+        total = int(w * 0.38)
+        filled = int(total * max(0.0, min(1.0, progress)))
+        pad = 20
+        if q == "TL":
+            x0, y0 = pad, pad
+            color = COLOR_TL
+        elif q == "TR":
+            x0, y0 = w - pad - total, pad
+            color = COLOR_TR
+        elif q == "BL":
+            x0, y0 = pad, h - pad - BAR_H
+            color = COLOR_BL
+        else:  # "BR"
+            x0, y0 = w - pad - total, h - pad - BAR_H
+            color = COLOR_BR
+
+        cv2.rectangle(frame, (x0, y0), (x0 + filled, y0 + BAR_H), color, -1)
+        cv2.rectangle(frame, (x0, y0), (x0 + total, y0 + BAR_H), (255,255,255), 1)
+
+    # instrucciones
+    cv2.putText(frame, "Mantene la mano ~1.2s en un cuadrante para seleccionar",
+                (20, h//2 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (230,230,230), 2)
+    cv2.putText(frame, "Atajos: 1=QR | 2=Juego | 3=Gestos | ESC para salir",
+                (20, h//2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220,220,220), 1)
+
 
 def run(camera_index: int = 0) -> Optional[str]:
     """
     Devuelve:
-      - "qr"     si el usuario eligio la zona izquierda
-      - "gestos" si el usuario eligio la zona derecha
-      - None     si el usuario sale (ESC / q)
+      'qr'     si el usuario confirma en TL
+      'juego'  si el usuario confirma en TR
+      'gestos' si el usuario confirma en BR
+      None     si sale (ESC)
+    BL se deja libre por ahora.
     """
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -84,7 +127,7 @@ def run(camera_index: int = 0) -> Optional[str]:
         min_tracking_confidence=MIN_CONFIDENCE_TRACK,
     )
 
-    dwell_side: Optional[str] = None   # "left" | "right" | None
+    dwell_q: Optional[str] = None
     dwell_start: float = 0.0
 
     try:
@@ -101,49 +144,42 @@ def run(camera_index: int = 0) -> Optional[str]:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
-            side = None
-            progress_left = 0.0
-            progress_right = 0.0
+            q_active: Optional[str] = None
+            progress = 0.0
 
             if res.multi_hand_landmarks:
                 lms = res.multi_hand_landmarks[0]
                 mp_drawing.draw_landmarks(frame, lms, mp_hands.HAND_CONNECTIONS)
 
-                # Usa la muñeca (landmark 0) para decidir lado
+                # Usamos la MUÑECA (landmark 0)
                 wrist = lms.landmark[0]
-                x_norm = wrist.x  # 0..1 tras flip/resize
-                if x_norm <= LEFT_MAX_X:
-                    side = "left"
-                elif x_norm >= RIGHT_MIN_X:
-                    side = "right"
+                x_norm, y_norm = wrist.x, wrist.y
+                q_active = _quadrant_of(x_norm, y_norm)
 
-            now = time.time()
-
-            if side is None:
-                dwell_side = None
-                dwell_start = 0.0
-            else:
-                if dwell_side != side:
-                    # comienza dwell en nuevo lado
-                    dwell_side = side
+                now = time.time()
+                if dwell_q != q_active:
+                    dwell_q = q_active
                     dwell_start = now
-                # progreso
-                t = now - dwell_start
-                p = min(1.0, t / DWELL_SECONDS)
-                if side == "left":
-                    progress_left = p
-                else:
-                    progress_right = p
+                elapsed = now - dwell_start
+                progress = min(1.0, elapsed / DWELL_SECONDS)
 
-                if t >= DWELL_SECONDS:
-                    # Confirmado
-                    selection = "qr" if side == "left" else "gestos"
-                    cap.release()
-                    cv2.destroyWindow(WINDOW_TITLE)
-                    return selection
+                if elapsed >= DWELL_SECONDS:
+                    # Confirmado → mapear a salida
+                    sel_map = {"TL": "qr", "TR": "juego", "BR": "gestos"}
+                    selection = sel_map.get(q_active)
+                    if selection is not None:
+                        cap.release()
+                        cv2.destroyWindow(WINDOW_TITLE)
+                        return selection
+                    else:
+                        # BL por ahora no hace nada: reinicia dwell
+                        dwell_q = None
+                        dwell_start = 0.0
+            else:
+                dwell_q = None
+                dwell_start = 0.0
 
-            # UI
-            _draw_layout(frame, progress_left, progress_right)
+            _draw_overlay(frame, q_active, progress)
             cv2.imshow(WINDOW_TITLE, frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -151,22 +187,13 @@ def run(camera_index: int = 0) -> Optional[str]:
                 cap.release()
                 cv2.destroyWindow(WINDOW_TITLE)
                 return None
-            if key == ord('k'):         # también permitir volver (sale)
-                cap.release()
-                cv2.destroyWindow(WINDOW_TITLE)
-                return None
-            if key == ord('g'):         # atajo: gestos
-                cap.release()
-                cv2.destroyWindow(WINDOW_TITLE)
-                so = platform.system()
-                if so == "Windows":
-                    return "gestosWindows"
-                elif so == "Linux":
-                    return "gestosLinux"
-            if key == ord('q'):         # atajo: qr
-                cap.release()
-                cv2.destroyWindow(WINDOW_TITLE)
-                return "qr"
+            # Atajos de teclado
+            if key == ord('1'):
+                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "qr"
+            if key == ord('2'):
+                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "juego"
+            if key == ord('3'):
+                cap.release(); cv2.destroyWindow(WINDOW_TITLE); return "gestos"
 
     finally:
         cap.release()
