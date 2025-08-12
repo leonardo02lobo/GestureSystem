@@ -241,20 +241,20 @@ def run(camera_index: int = 0) -> None:
 
             game.update(dt, now)
 
-                if tip_xy:
-                    game.register_trail_point(tip_xy[0], tip_xy[1], now)
-                    if prev_tip:
-                        p1 = (prev_tip[0], prev_tip[1])
-                        p2 = (tip_xy[0], tip_xy[1])
-                        seg_dt = max(1e-3, now - prev_tip[2])
-                        dx = p2[0] - p1[0]
-                        dy = p2[1] - p1[1]
-                        seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
-                        if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
-                            game.try_slice_with_segment(p1, p2, seg_speed, now)
-                    prev_tip = (tip_xy[0], tip_xy[1], now)
-                else:
-                    prev_tip = None
+            if tip_xy:
+                game.register_trail_point(tip_xy[0], tip_xy[1], now)
+                if prev_tip:
+                    p1 = (prev_tip[0], prev_tip[1])
+                    p2 = (tip_xy[0], tip_xy[1])
+                    seg_dt = max(1e-3, now - prev_tip[2])
+                    dx = p2[0] - p1[0]
+                    dy = p2[1] - p1[1]
+                    seg_speed = (dx*dx + dy*dy) ** 0.5 / seg_dt
+                    if (abs(dx) + abs(dy)) >= MIN_MOVE_PIX:
+                        game.try_slice_with_segment(p1, p2, seg_speed, now)
+                prev_tip = (tip_xy[0], tip_xy[1], now)
+            else:
+                prev_tip = None
 
             # Mostrar cuenta regresiva si gesto OK mantenido
             if gesto_ok_detectado:
